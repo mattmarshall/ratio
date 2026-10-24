@@ -8,6 +8,13 @@ use std::sync::{Arc, Mutex};
 static OUTPUT: Mutex<Vec<u8>> = Mutex::new(Vec::new());
 const FINAL: &str = "923bede0abad250c1ea53a8b12f2fe8fa7fbc17abf77de476b535545bbe04502";
 
+// A real nested VM trap must escape the host's I/O refusal mapping. This
+// export belongs only to the manual conformance module, never the core API.
+#[no_mangle]
+pub extern "C" fn ratio_opfs_test_trap() {
+    core::arch::wasm32::unreachable();
+}
+
 #[no_mangle]
 pub extern "C" fn ratio_opfs_alloc(length: usize) -> *mut u8 {
     assert!(length <= ratio_store::opfs::MAX_FRAME);

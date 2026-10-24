@@ -1,0 +1,25 @@
+run_id: "opfs-20261024-a1"
+kernel_revision: "b77029e83db9ad3c00525271d1b7a7a8881ad11f"
+backend_location: "Actual OPFS in the Codex in-app browser on macOS; loopback origin 127.0.0.1:38565; namespaces ratio365lab-20261024-a1 and ratio365lab-20261024-b1"
+journal_height: 3
+journal_digest: "923bede0abad250c1ea53a8b12f2fe8fa7fbc17abf77de476b535545bbe04502"
+checks { check_id: "browser-seed" passed: true detail: "all native fixture bytes/pins/planes/figures, claims, holes, binary, UTF-8, and u64 height checks agree; drill height 1; digest f45b0b3718cac52e34d52b73be692f5b6573c3fedfd394bd28ba3e40200f5b35; trial balance 7 / 7" }
+checks { check_id: "browser-cold-replay" passed: true detail: "cold replay and book isolation agree; drill height 1; digest f45b0b3718cac52e34d52b73be692f5b6573c3fedfd394bd28ba3e40200f5b35; trial balance 7 / 7" }
+checks { check_id: "browser-client-append" passed: true detail: "one append acknowledged; both fixture books remain unchanged; drill height 2; digest b0a5c4d1b8d84f0bd44c9d0f616e2cc01edc9cf23b495f9c9fd8af960d921ec0; trial balance 14 / 14" }
+checks { check_id: "browser-replay-after-ack" passed: true detail: "cold replay and book isolation agree; drill height 2; digest b0a5c4d1b8d84f0bd44c9d0f616e2cc01edc9cf23b495f9c9fd8af960d921ec0; trial balance 14 / 14" }
+checks { check_id: "browser-isolated-seed" passed: true detail: "all native fixture bytes/pins/planes/figures, claims, holes, binary, UTF-8, and u64 height checks agree; drill height 1; digest f45b0b3718cac52e34d52b73be692f5b6573c3fedfd394bd28ba3e40200f5b35; trial balance 7 / 7" }
+checks { check_id: "browser-first-after-isolated" passed: true detail: "cold replay and book isolation agree; drill height 2; digest b0a5c4d1b8d84f0bd44c9d0f616e2cc01edc9cf23b495f9c9fd8af960d921ec0; trial balance 14 / 14" }
+checks { check_id: "second-tab-exclusion" passed: true detail: "A second worker remained a client; one namespace lock was held." }
+checks { check_id: "shared-owner" passed: true detail: "Client requests reached the existing dedicated worker." }
+checks { check_id: "partial-write-no-ack" passed: true detail: "Injected partial append refused without acknowledgment." }
+checks { check_id: "poisoned-owner-no-figures" passed: true detail: "No figures were returned; ownership remained held." }
+checks { check_id: "reload-does-not-steal" passed: true detail: "Reloading a client did not steal a live poisoned owner lease." }
+checks { check_id: "owner-reload-tail-recovery" passed: true detail: "New owner recovered only the 159-byte unacknowledged incomplete tail." }
+checks { check_id: "client-write-through-owner" passed: true detail: "A client appended through the sole successor owner." }
+checks { check_id: "acked-write-survives-owner-reload" passed: true detail: "Another fresh owner retained the acknowledged second posting and 14/14 figures." }
+checks { check_id: "two-live-backend-isolation" passed: true detail: "Independent OPFS files retained distinct drill states; both fixture books remained unchanged." }
+limitations: "Synthetic fixture only; no customer book, browser eviction, power-loss DR, retention, or off-device backup claim."
+limitations: "Node fs-backed simulation remains distinct from actual browser API execution."
+limitations: "No browser UI/auth product or Safari/iOS/other-browser compatibility claim."
+limitations: "Per-object 16 MiB cap and O(object-count) host index memory; kernel capacity measurements do not measure that index."
+limitations: "No timings were measured for these browser checks; no performance claim."

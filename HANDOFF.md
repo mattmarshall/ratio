@@ -1840,3 +1840,18 @@ append test correctly refused the shared fixture's opaque close records; the
 write drill now has its own valid book, leaving the common fixture unchanged.
 The loopback verification server requires a clean revision. Live OPFS second-tab
 and reload proof remain before #365 completion.
+
+#365 actual browser proof passed from clean b77029e. A second tab remained a
+client even after a partial-write failure; the poisoned owner returned no
+figures. Reload recovered only 159 incomplete tail bytes, preserving every
+fixture byte/pin and figure. A client write then survived another owner reload,
+and a second OPFS namespace remained isolated. Fifteen raw protobuf receipts
+and screenshots are preserved in docs/evidence/opfs-2026-10-24. The simulated
+complete-but-unacknowledged case also survives and requires reconciliation.
+No off-device backup, eviction, browser-product, or large-index memory claim
+follows. Final exact-head CI remains; the loopback server and lab tabs closed.
+
+Final local backend/Console/recovery/SDK gate passed 17/17 targets. A real
+nested wasm-trap regression also passed after fixing host catch blocks to
+propagate VM traps rather than treating them as ordinary I/O refusals.
+Standalone site build/verification passed with the same arguments as CI.

@@ -172,3 +172,9 @@ proto_encoder(
     proto = ":ratio_proto",
     message = "ratio.console.v1.ConnectTemplateGrants",
 )
+
+proto_encoder(
+    name = "encode_backend_conformance_evidence",
+    proto = ":ratio_proto",
+    message = "ratio.storage.v1.BackendConformanceEvidence",
+)

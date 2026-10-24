@@ -5778,3 +5778,16 @@ the write race. All 49 executable mutation probes fail for their named reason.
 The planned Web Lock/exclusive-handle realization, explicit backend binding,
 and [remaining browser/conformance evidence](docs/opfs-storage.md) are recorded.
 No OPFS adapter or browser product is claimed Built at this proof gate.
+
+### October 24 — OPFS adapter and actual browser proof (#365)
+
+**single-writer OPFS object journal** is the #365 Built phrase. The ownership
+model was committed before the explicit-binding Rust adapter and canonical
+protobuf frame host. Required CI simulation compares the shared native fixture
+and fault paths. Actual browser OPFS verifies that fixture, second-tab client
+exclusion, poisoned-read refusal, partial-tail recovery, a client acknowledgment
+through a sole owner and another reload, and namespace isolation. Fifteen raw
+receipts and the independently checked evidence record preserve those claims.
+The model covers safety, not frozen-owner availability; browser eviction and
+off-device recovery remain unproved. The host index is outside kernel memory
+ceilings. Final required CI remains the merge gate.

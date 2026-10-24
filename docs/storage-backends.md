@@ -604,6 +604,6 @@ O(object-count) metadata memory is outside the #364 kernel measurements.
 
 The build-enforced gate runs the actual Rust wasm adapter with an explicitly
 labeled fs-backed handle simulation. Actual browser OPFS and reload/second-tab
-evidence remain pending. No browser product, browser-scale memory/performance,
+evidence now pass at the recorded clean revision. No browser product, browser-scale memory/performance,
 off-device backup, or eviction guarantee is claimed. Read the
 [ownership protocol](opfs-storage.md) before changing this adapter.

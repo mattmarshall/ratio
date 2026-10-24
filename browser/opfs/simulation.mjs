@@ -12,7 +12,7 @@ const expected=JSON.parse(fs.readFileSync(baselinePath,'utf8'));
 const moduleObject=new WebAssembly.Module(fs.readFileSync(modulePath));
 const root=fs.mkdtempSync(path.join(process.env.TEST_TMPDIR||os.tmpdir(),'opfs-'));
 class Handle {
-  constructor(file){this.fd=fs.openSync(file,fs.constants.O_RDWR|fs.constants.O_CREAT,0o600);this.closed=false;this.interrupt=false;}
+  constructor(file){this.fd=fs.openSync(file,fs.constants.O_RDWR|fs.constants.O_CREAT,0o600);this.closed=false;this.interrupt=false;this.failAfterFlush=false;}
   getSize(){return fs.fstatSync(this.fd).size;}
   read(bytes,{at}){return fs.readSync(this.fd,bytes,0,bytes.length,at);}
   write(bytes,{at}){
@@ -21,16 +21,17 @@ class Handle {
     return fs.writeSync(this.fd,bytes,0,bytes.length,at);
   }
   truncate(size){fs.ftruncateSync(this.fd,size);}
-  flush(){fs.fsyncSync(this.fd);}
+  flush(){fs.fsyncSync(this.fd);if(this.failAfterFlush){this.failAfterFlush=false;throw new Error('injected lost acknowledgment after flush');}}
   close(){if(!this.closed){fs.closeSync(this.fd);this.closed=true;}}
 }
 function context(){
-  const bindings=new Map(),handles=[];let instance;
+  const bindings=new Map(),handles=[];let instance,trapNextValidation=false;
   instance=new WebAssembly.Instance(moduleObject,{env:imports(()=>instance.exports.memory,bindings)});
   return {
     bindings,
+    trapNext(){trapNextValidation=true;},
     open(id,file){const handle=new Handle(file);handles.push(handle);
-      const log=new ObjectLog(handle,frame=>validate(instance,frame));
+      const log=new ObjectLog(handle,frame=>{if(trapNextValidation){trapNextValidation=false;instance.exports.ratio_opfs_test_trap();}return validate(instance,frame);});
       bindings.set(id,{log,active:()=>!handle.closed});return {handle,log};},
     request(operation,binding=1){const result=decodeReply(probe(instance,encodeRequest({correlationId:`${binding}-${operation}`,operation,binding})));
       return result;},
@@ -56,6 +57,17 @@ assert.ok(fs.statSync(partial).size>acknowledgedEnd);c.close();
 c=context();const recovered=c.open(3,partial);assert.ok(recovered.log.recoveredTailBytes>0);
 assert.equal(fs.statSync(partial).size,acknowledgedEnd);assert.deepEqual(JSON.parse(text(c.request(3,3).fixtureJson)),expected);
 assert.equal(c.request(4,3).passed,true);c.close();
+const unknown=path.join(root,'unknown.objects');c=context();const uncertain=c.open(4,unknown);
+assert.equal(c.request(2,4).passed,true);uncertain.handle.failAfterFlush=true;
+const noReply=c.request(6,4);assert.equal(noReply.passed,true,noReply.detail);assert.equal(noReply.writeAcknowledged,false);c.close();
+c=context();const complete=c.open(4,unknown);assert.equal(complete.log.recoveredTailBytes,0);
+const reconciled=c.request(3,4);assert.equal(reconciled.passed,true,reconciled.detail);assert.match(reconciled.detail,/drill height 2/);
+const beforeRetry=fs.statSync(unknown).size;const retry=c.request(4,4);assert.equal(retry.passed,false);assert.match(retry.detail,/reconciliation/);
+assert.equal(fs.statSync(unknown).size,beforeRetry,'unknown-outcome retry added another posting');c.close();
+const trapped=path.join(root,'trapped.objects');c=context();c.open(5,trapped);assert.equal(c.request(2,5).passed,true);
+const beforeTrap=fs.statSync(trapped).size;c.trapNext();assert.throws(()=>c.request(4,5),WebAssembly.RuntimeError);
+assert.equal(fs.statSync(trapped).size,beforeTrap,'nested trap wrote a frame');c.close();
+c=context();c.open(5,trapped);const afterTrap=c.request(3,5);assert.equal(afterTrap.passed,true,afterTrap.detail);assert.match(afterTrap.detail,/drill height 1/);c.close();
 const corrupt=path.join(root,'corrupt.objects');fs.copyFileSync(partial,corrupt);
 const bytes=fs.readFileSync(corrupt);bytes[6]^=1;fs.writeFileSync(corrupt,bytes);
 c=context();assert.throws(()=>c.open(1,corrupt),/corrupt/);c.close();

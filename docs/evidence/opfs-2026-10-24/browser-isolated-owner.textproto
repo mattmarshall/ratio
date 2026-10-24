@@ -1,0 +1,6 @@
+correlation_id: "8320c347-2421-4cad-9cd6-dcd087b3cf3d"
+passed: true
+role: OPFS_PROBE_ROLE_OWNER
+detail: "owner ready; recovered 0 incomplete tail bytes"
+owner_id: "fc2f968b-a0fb-46c4-af32-f86cb4b81851"
+held_lock_count: 1

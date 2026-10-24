@@ -367,8 +367,11 @@ is reconstructed. Only a trailing incomplete unacknowledged frame can be
 discarded after exclusive ownership; complete corruption or duplicate frames
 refuse. A trap, ambiguous I/O, or timeout cannot serve a partial figure.
 
-The Node handle simulation verifies that boundary; actual browser reload proof
-is still pending. OPFS eviction, OS/device loss, off-device export/restore,
+The Node handle simulation verifies that boundary. Actual browser reload
+recovered a 159-byte unacknowledged partial tail, retained the old figures and
+pins, and preserved a later acknowledged client write through another restart.
+See the [raw receipts and limitations](opfs-storage.md). OPFS eviction,
+OS/device loss, off-device export/restore,
 original-delivery byte custody, and Connect credentials need their own complete
 inventory and backup procedure before a browser customer recovery claim.
 The accepted #264/#300 evidence remains its documented S3 representative drill;

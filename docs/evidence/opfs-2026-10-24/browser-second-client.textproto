@@ -1,0 +1,5 @@
+correlation_id: "57fb043a-1570-4ae1-9638-398c1a1aa5bd"
+passed: true
+role: OPFS_PROBE_ROLE_CLIENT
+detail: "client only; another worker owns this backend"
+held_lock_count: 1

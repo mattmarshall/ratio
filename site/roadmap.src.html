@@ -215,6 +215,11 @@ __STYLE__
           1 GiB profile fits 20,486,308 entries with one view and 10,246,267 with
           two at the tested shape; the next entry refuses. Browser durable
           storage and its single-writer proof remain separate work.</li>
+          <li>single-writer OPFS object journal — a proof-first owner protocol
+          preserves immutable object claims. Actual browser tests reproduce the
+          native fixture, exclude a second writer, recover a partial append on
+          reload, and preserve an acknowledged client write. Off-device backup
+          and a complete browser application remain separate work.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
           <li>live custodian statement ingest — a CreateBook Investment book

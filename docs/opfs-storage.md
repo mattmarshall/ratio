@@ -1,8 +1,8 @@
-# OPFS ownership protocol — proof gate, October 24, 2026
+# OPFS ownership protocol and browser evidence, October 24, 2026
 
 Related: #365. The proof was committed as `2e520dc` before adapter source.
-The implementation below has simulation evidence; actual browser execution
-and final conformance remain required.
+The implementation has distinct simulation and actual-browser evidence.
+Final exact-head CI remains the merge gate.
 
 `OPFSJournal.tla` separates ownership, preparing an append position, writing,
 flushing/acknowledging, and crash/reload. An acknowledged write remains in the
@@ -19,9 +19,9 @@ was removed before committing the model. Tail recovery now occurs only after
 the last owner is gone. [Logs](evidence/opfs-2026-10-24/) retain the corrected
 trace and the full **49-probe** executable sweep, all red for their named reason.
 
-## Implementation and pending browser realization
+## Implementation
 
-One dedicated worker must own each explicit backend namespace. It will hold
+One dedicated worker must own each explicit backend namespace. It holds
 a [Web Lock](https://www.w3.org/TR/web-locks/) and an exclusive
 [OPFS synchronous access handle](https://fs.spec.whatwg.org/) for its lifetime.
 Other tabs submit work to the owner; they do not become independent writers.
@@ -52,10 +52,10 @@ of weakening the close guard or changing the shared fixture.
 loopback-only synthetic lab. The page/worker use protobuf correlation messages
 and never turn a correlation ID into an exactly-once claim. The namespace is
 preserved in the URL across reload. Actual second-tab and mid-append reload
-steps are still pending; do not close #365 from simulation alone.
+steps below passed against actual browser APIs, separately from simulation.
 
-Because OPFS name/handle lookup is asynchronous, the proposed synchronous Rust
-adapter will address opaque protobuf object frames in one append-only file per
+Because OPFS name/handle lookup is asynchronous, the synchronous Rust
+adapter addresses opaque protobuf object frames in one append-only file per
 backend namespace. Frames name their key and body and protect both by digest.
 The worker checks the immutable-key index, appends, flushes, then acknowledges.
 A complete corrupt or duplicate frame refuses; recovery can discard only an
@@ -72,3 +72,56 @@ Browser eviction, off-device backup, identity, membership authorization, provide
 credentials, a full browser Console transport, and distribution approval are
 not supplied by this storage protocol. iOS continues using its independent
 APFS claim path and exact kernel pin.
+
+## Actual browser proof
+
+The clean implementation revision was
+`b77029e83db9ad3c00525271d1b7a7a8881ad11f`; module SHA-256 was
+`b4e7c41f5037e2ea64ba8002798f3cc5ccb649610e390f185fe4ed1efe4f73bd`.
+The Codex in-app browser on macOS used the loopback lab origin and namespaces
+`ratio365lab-20261024-a1` and `ratio365lab-20261024-b1`. This is actual
+OPFS/Web Locks execution, not the Node fs shim.
+
+1. The first worker acquired one namespace lock and an exclusive file handle.
+   The reusable fixture matched native JSONL: every journal byte, all four
+   prefix pins, six side planes, 21/21 trial balance, binary objects, UTF-8
+   ordering, exact u64 height, conditional claims, and gap refusals.
+2. A second tab became a client and reached the same owner. An injected
+   partial append produced no write acknowledgment and no readable figures.
+   Reloading the client still did not steal the live poisoned owner's lease.
+3. Reloading the owner produced a different sole owner, which recovered only
+   the **159-byte incomplete unacknowledged tail**. The fixture digest stayed
+   `923bede0abad250c1ea53a8b12f2fe8fa7fbc17abf77de476b535545bbe04502`;
+   all planes and figures agreed. The valid drill book retained its first
+   posting, 7/7 trial balance, and digest
+   `f45b0b3718cac52e34d52b73be692f5b6573c3fedfd394bd28ba3e40200f5b35`.
+4. The client appended through that owner. Another owner reload retained both
+   drill postings, **14/14**, and digest
+   `b0a5c4d1b8d84f0bd44c9d0f616e2cc01edc9cf23b495f9c9fd8af960d921ec0`.
+   Both common fixture books stayed unchanged.
+5. An independent OPFS namespace reproduced the base fixture and 7/7 drill
+   while the first retained 14/14. Each namespace had one owner; there was
+   no cross-namespace mutation or process-global store substitution.
+
+[Evidence](evidence/opfs-2026-10-24/) retains 15 raw protobuf receipts,
+decoded text, screenshots, hashes, and a `BackendConformanceEvidence` record
+whose 15 assertions were independently checked from those receipts. Native
+fixture payloads were compared again offline. The initial modeling shortcut
+and invalid dated-append fixture attempt are recorded above; neither counted
+as passing evidence. Lab tabs and the server were closed after preservation;
+no namespace file was deleted.
+
+The simulation additionally checks complete corruption/duplicate-frame refusal
+and a fully flushed write whose acknowledgment is lost: reopening retains it,
+and the drill refuses a blind duplicate retry until reconciliation. These are
+simulated faults, not browser power-loss evidence. No browser timing or
+performance claim is made. The host index consumes O(object-count) metadata
+memory in addition to kernel linear memory. The positive TLA check uses two
+writers/two slots and checks safety, not availability under a frozen owner.
+A frozen owner can block clients; it cannot be displaced by a heartbeat.
+
+A later review found that host catch blocks could mask a nested wasm trap as
+an ordinary I/O refusal. VM traps now propagate so the owner discards the
+instance. A real nested wasm-trap regression verifies propagation, no frame
+write, and intact replay in a fresh instance; this added fault test is part
+of the simulation gate, not a claim of browser trap injection.

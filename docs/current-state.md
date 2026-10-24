@@ -24,8 +24,10 @@ is retained and that profile is unsupported. The default stays at 1 GiB.
 counterexample without exclusion, and all 49 executable probes verified.
 The [protocol](opfs-storage.md) preceded adapter code. The explicit-binding
 Rust adapter now compiles and passes the persistent-handle simulation and
-shared native/wasm fixture. Actual browser OPFS ownership, second-tab/reload
-behavior, and final conformance remain unproved.
+shared native/wasm fixture. [Actual browser evidence](opfs-storage.md) now
+proves second-tab exclusion, partial-write refusal, owner reload, retained
+figures/digests, durable client acknowledgment, and namespace isolation.
+Final exact-head CI remains before #365 completion.
 
 Deployment dependency authentication (#382, October 23): the workflow logs
 into ECR Public before pulling the Lambda adapter, separately from its private
