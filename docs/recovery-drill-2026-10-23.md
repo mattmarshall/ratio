@@ -185,3 +185,11 @@ checks cover ordinary synchronous execution and both Tokio runtime flavors.
 An explicit continuation resumes at HTTP without repeating successful posts.
 This supplemental failure does not alter the original recovery cut or measured
 RTO; #300 remains incomplete until the continuation and verifier review pass.
+
+After the runtime fix, the HTTP post and unbalanced-post refusal passed. The
+next harness assertion incorrectly demanded `NoSuchBucket` from `init`, which
+instead correctly refuses unsupported durable book publication before local
+fallback. Attempt 2 is retained at `evidence/writer-attempt-2.zip`, SHA-256
+`32495fb96087c716a69e3d5a585ef13f8fc8239a8253bac46c8a8a642acf691f`.
+The continuation accepts that precise init refusal, still requires the live AWS
+failure for the existing-book writers, and does not repeat the HTTP post.

@@ -19,7 +19,10 @@ def main():
     parser.add_argument("--run-env", required=True)
     parser.add_argument("--proto-dir", required=True)
     parser.add_argument("--continue-http", action="store_true", help="Resume only the preserved nested-runtime HTTP failure; never repeat successful writes")
+    parser.add_argument("--continue-refusals", action="store_true", help="Resume only the preserved init diagnostic assertion; HTTP already posted")
     args = parser.parse_args()
+    assert not (args.continue_http and args.continue_refusals)
+    continuing = args.continue_http or args.continue_refusals
     sys.path.insert(0, args.proto_dir)
     from ratio.storage.v1 import recovery_pb2 as pb, evidence_pb2 as stored
     settings = dict(line.split("=", 1) for line in Path(args.run_env).read_text().splitlines() if line)
@@ -28,12 +31,17 @@ def main():
     assert lab.startswith("ratio-recovery-lab-") and backup.startswith("ratio-recovery-backup-")
     parent = Path("/private/tmp") / ("ratio-approved-recovery-" + run)
     work = parent / "writer-probes"
-    if args.continue_http:
+    if continuing:
         assert work.is_dir()
         prior = pb.RecoveryDrillEvidence.FromString((work / "writer-evidence.pb").read_bytes())
-        assert prior.phases[-1].phase_id == "live-loopback-http-post-and-refusal" and not prior.phases[-1].passed
-        assert "Cannot start a runtime from within a runtime" in (work / "http-server.log").read_text()
-        shutil.copyfile(work / "http-server.log", work / "http-server-attempt-1.log")
+        if args.continue_http:
+            assert prior.phases[-1].phase_id == "live-loopback-http-post-and-refusal" and not prior.phases[-1].passed
+            assert "Cannot start a runtime from within a runtime" in (work / "http-server.log").read_text()
+            shutil.copyfile(work / "http-server.log", work / "http-server-attempt-1.log")
+        else:
+            assert prior.phases[-1].phase_id == "all-cli-mcp-writers-refuse-live-s3-failure" and not prior.phases[-1].passed
+            assert "durable book publication is unavailable; refusing local fallback" in (work / "live-refuse-init.log").read_text()
+            assert prior.phases[-2].phase_id == "live-loopback-http-post-and-refusal-continuation" and prior.phases[-2].passed
     else:
         assert not work.exists(), "preserve an existing attempt instead of restarting"
         work.mkdir(mode=0o700)
@@ -47,7 +55,7 @@ def main():
     prefix = f"recovery-lab/{run}/writers/"
     serving = work / "serving"
     configured = dict(env, RATIO_JOURNAL_BUCKET=lab, RATIO_JOURNAL_PREFIX=prefix)
-    record = prior if args.continue_http else pb.RecoveryDrillEvidence.FromString((parent / "continuation-evidence.pb").read_bytes())
+    record = prior if continuing else pb.RecoveryDrillEvidence.FromString((parent / "continuation-evidence.pb").read_bytes())
     record.limitations.append("Supplemental writer probes use a distinct lab snapshot copy and loopback HTTP; they do not claim production gateway JWT verification.")
 
     def redact(text):
@@ -96,7 +104,7 @@ def main():
     def objects():
         return api("writer-object-list", "s3api", "list-objects-v2", "--bucket", lab, "--prefix", prefix).get("Contents", [])
 
-    if not args.continue_http:
+    if not continuing:
         assert not objects(), "writer probe destination must start empty"
         restore = dict(env, RATIO_RECOVERY_BACKUP_BUCKET=backup, RATIO_RECOVERY_BACKUP_PREFIX="snapshot/", RATIO_RECOVERY_DESTINATION_BUCKET=lab, RATIO_RECOVERY_DESTINATION_PREFIX=prefix)
         phase("writer-snapshot-copy", lambda: command("restore-writer-copy", [core, "recovery", "restore"], restore))
@@ -135,17 +143,18 @@ def main():
             server.terminate()
             out, err = server.communicate(timeout=30)
             (work / "http-server.log").write_text(redact(line + out + err))
-    phase("live-loopback-http-post-and-refusal-continuation" if args.continue_http else "live-loopback-http-post-and-refusal", http_write)
+    if not args.continue_refusals:
+        phase("live-loopback-http-post-and-refusal-continuation" if args.continue_http else "live-loopback-http-post-and-refusal", http_write)
 
     def fail_closed():
         before = {p.relative_to(serving): hashlib.sha256(p.read_bytes()).digest() for p in serving.rglob("*") if p.is_file()}
         unavailable = dict(configured, RATIO_JOURNAL_BUCKET="ratio-recovery-lab-missing-" + run)
         commands = [("init", ["init"]), ("post", ["post", str(event)]), ("strike", ["strike"]), ("close", ["close", "--through", "2026-07-31"]), ("approve", ["approve", "unapproved-draft"]), ("accept", ["accept", "synthetic-break", "--because", "fixture"]), ("mcp", ["mcp"])]
         for label, cmd in commands:
-            command("live-refuse-" + label, [core] + cmd + ["--book", str(serving / "alpha")], unavailable, stdin="", refusal="NoSuchBucket")
+            command("live-refuse-" + label, [core] + cmd + ["--book", str(serving / "alpha")], unavailable, stdin="", refusal="durable book publication is unavailable; refusing local fallback" if label == "init" else "NoSuchBucket")
         after = {p.relative_to(serving): hashlib.sha256(p.read_bytes()).digest() for p in serving.rglob("*") if p.is_file()}
         assert before == after, "a failed configured writer changed local book bytes"
-    phase("all-cli-mcp-writers-refuse-live-s3-failure", fail_closed)
+    phase("all-cli-mcp-writers-refuse-live-s3-failure-continuation" if args.continue_refusals else "all-cli-mcp-writers-refuse-live-s3-failure", fail_closed)
 
     shutil.rmtree(serving)
     phase("cold-cli-read-after-serving-root-loss", lambda: command("cold-cli", [core, "balance", "--book", serving / "alpha"], configured))
@@ -169,7 +178,7 @@ def main():
     assert sum(obj["Key"].startswith(prefix + "beta/proposals/") for obj in all_objects) == 1
     record.phases.add(phase_id="writer-cold-s3-readback", passed=True, detail="All three protocols' exact journal IDs survived root loss; CLI strike NAV 62500 at prefix 3 and the unapproved MCP draft survived in S3.")
     (work / "writer-evidence.pb").write_bytes(record.SerializeToString(deterministic=True))
-    archive = parent / ("writer-probes-continuation.zip" if args.continue_http else "writer-probes.zip")
+    archive = parent / ("writer-probes-refusal-continuation.zip" if args.continue_refusals else "writer-probes-continuation.zip" if args.continue_http else "writer-probes.zip")
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
         for path in sorted(work.iterdir()):
             if path.is_file():
