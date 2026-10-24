@@ -57,9 +57,23 @@ source, and would trade the verification argument for the exclusion. That trade
 has not been made. If exclusivity of operation later matters more than openness,
 that is a different license and a deliberate decision, not a wording change.
 
-## Contributing
+## iOS distribution and contribution policy
 
-Contributions are accepted under the AGPL-3.0. ⚠ Note that dual licensing
-requires the copyright holder to be able to relicense: if outside contributions
-are ever accepted, a CLA or a DCO-plus-copyright-assignment is needed before the
-commercial license can include them. There are no outside contributions today.
+On October 24, 2026, the owner approved private, all-rights-reserved source
+for the separate `mattmarshall/ratio-ios` shell and prohibited outside
+contributions to both repositories. Ratio's existing AGPL/commercial licenses
+and third-party licenses remain in force. The contribution policy does not
+restrict rights already granted under those licenses.
+
+An App Store or TestFlight build linking Ratio depends on the copyright
+holder's applicable commercial permission and a separate distribution
+decision. Private visibility and a successful build do not grant distribution
+approval. The shell retains an exact reviewed kernel pin; this policy record
+does not change its pinned code or authorize TestFlight.
+
+Outside contributions are not accepted in Ratio or the iOS shell. Do not merge
+an outside pull request or import an outside patch, including through an
+owner-authored PR. Before changing that policy, the owner must settle the
+rights instrument and enforce the new merge gate. No CLA or assignment is
+implied while outside contributions are prohibited. Existing third-party
+components retain their separately granted rights.
