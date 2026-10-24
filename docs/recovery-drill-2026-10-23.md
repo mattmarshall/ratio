@@ -225,3 +225,13 @@ the figures, RTO, inventories, failures, retained evidence, and stated scope
 limitations before either recovery issue can be treated as complete. Live
 Plaid/Google resumption, customer deployment objectives, physical iOS signing,
 and provider conformance are not proved by these results.
+
+### Supplemental HTTP unavailable-backend check pending
+
+The earlier HTTP positive write and unbalanced refusal passed. A separate
+`deploy/recovery-http-refusal.py` probe now checks unavailable-S3 startup before
+binding and unchanged local bytes, preserving a protobuf result and readback
+archive. Its first invocation stopped before credentials or any S3 operation:
+the AWS SSO token had expired and could not refresh. It has not yet executed;
+the owner was asked to renew `aws sso login --profile ratio`. Do not treat the
+passing CLI/MCP unavailable-backend checks as this HTTP-specific evidence.
