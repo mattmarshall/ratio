@@ -94,3 +94,32 @@ one vector; large logs avoid reading every page. The claim remains conditional.
 A separate `adaptive` attempt remeasures the same retained fixtures after the
 two acknowledged initial append probes (N+2), preserving the original record.
 Shared-host/provider timings are observations, not a capacity guarantee.
+
+### Completed adaptive height result (#358)
+
+Source `8d1241d12b09efca057c7c346984b0ebb23881fd`, three paired samples on
+the retained fixtures after the two initial appends:
+
+| Actual height | Full-list height median | Adaptive height median | Full-list append | Adaptive append |
+|---|---:|---:|---:|---:|
+| 5,398 | 999 ms | 983 ms | 937 ms | 1,047 ms |
+| 65,538 | 10,075 ms | 1,179 ms | 12,486 ms | 1,532 ms |
+
+The smaller height curve is now near parity, while its single append sample
+still includes roughly one extra probe's overhead. Do not claim a universal
+latency win. The larger curve avoids materializing the entire listing and
+substantially reduces observed latency. Actual occupied conditional claims,
+unchanged acknowledged bytes, and missing-slot refusal passed again. Both
+local storage/CLI suites passed after the correction; the known-lower-bound
+search covers threshold, large and u64-boundary cases.
+
+Both read-back-verified AES256/seven-day GOVERNANCE archives remain retained:
+
+- Initial: `evidence/provider-358-initial.zip`, SHA-256
+  `68c1796dfe0897924da09f9908e90075a97b7962e04c876a1c82318209f8b96e`.
+- Corrected: `evidence/provider-358-adaptive.zip`, SHA-256
+  `c64d24644bbd7c7599b1042d5ddfa8290cf5094b7dd1a9d586d9ccf520d78d30`.
+
+These include seed, initial and corrected protobuf records and redacted logs.
+The S3 LIST/conditional-PUT model is unchanged; positive checks passed and the
+unconditional-write probe violated `NoWriteIsLost` for its named reason.

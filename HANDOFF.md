@@ -1654,3 +1654,9 @@ latency. The `If-None-Match:*` claim is still separate from height and the
 `NoWriteIsLost` probe still goes red. `for_each_since` still refuses a hole.
 Issue #358 needs live S3 cost/latency evidence before closing. Issue #359's
 cross-backend digest gate and the recovery work remain independent gates.
+
+2026-10-23 #358 live correction passed: at 5,398 entries, full-list/adaptive
+height medians were 999/983 ms and append samples 937/1,047 ms; at 65,538,
+10,075/1,179 ms and 12,486/1,532 ms. Constant-memory streaming handles smaller
+logs; bounded search handles larger ones. The initial 5k regression and both
+immutable archives remain in the provider report. Do not claim all sizes win.

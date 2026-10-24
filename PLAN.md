@@ -5541,3 +5541,11 @@ Conditional claims and hole refusal remain prerequisites.
 (1,727 ms versus 10,111 ms). Preserve both curves. Use constant-memory page
 streaming for smaller logs and bounded search above a measured-shape threshold;
 remeasure before claiming completion. No claim or hole-refusal rule changes.
+
+2026-10-23 #358 corrected provider result: the retained N+2 fixtures measured
+near-parity 999/983 ms full-list/adaptive height at 5,398 entries and
+10,075/1,179 ms at 65,538. Append samples were 937/1,047 ms and
+12,486/1,532 ms respectively. The single smaller append still pays an extra
+probe; the claim is bounded memory and the measured larger-curve improvement,
+not universal latency improvement. Both initial and corrected evidence remain
+retained, and conditional/no-hole assertions passed after correction.
