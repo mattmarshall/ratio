@@ -145,4 +145,5 @@ jobs:
           bazel test --lockfile_mode=error --test_output=errors \
             --test_env=RATIO_PG_URL \
             -- \
-            //crates/ratio-sql-project:pg_engine_test
+            //crates/ratio-sql-project:pg_engine_test \
+            //crates/ratio-postgres-store:pg_conformance_test

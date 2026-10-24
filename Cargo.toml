@@ -9,6 +9,7 @@ members = [
     "crates/ratio-chart",
     "crates/ratio-console",
     "crates/ratio-store",
+    "crates/ratio-postgres-store",
     "crates/ratio-rules",
     "crates/ratio-agent",
     "crates/ratio-mcp",

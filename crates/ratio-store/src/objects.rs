@@ -48,6 +48,22 @@ pub trait ObjectStore: Send + Sync {
             key.strip_prefix(prefix)?.parse::<u64>().ok()
         }).max().unwrap_or(0))
     }
+    /// Ordered committed sequence bodies. The default uses individual gets;
+    /// database adapters may stream one snapshot. SeqLog independently checks
+    /// exact contiguity and returned height before accepting the prefix.
+    fn scan_sequence(&self, prefix: &str, after: u64,
+        f: &mut dyn FnMut(u64, &[u8]) -> Result<()>) -> Result<u64> {
+        let height = self.max_sequence(prefix)?;
+        let mut seq = after;
+        while seq < height {
+            seq += 1;
+            let body = self.get(&format!("{prefix}{seq:020}"))?
+                .with_context(|| format!("journal sequence {seq} is missing under {prefix} (height {height}) — a gap in an append-only log is a different book, not a skip"))?;
+            f(seq, &body)?;
+        }
+        Ok(height)
+    }
+
 }
 
 impl<S: ObjectStore + ?Sized> ObjectStore for Arc<S> {
@@ -62,6 +78,10 @@ impl<S: ObjectStore + ?Sized> ObjectStore for Arc<S> {
     }
     fn max_sequence(&self, prefix: &str) -> Result<u64> {
         (**self).max_sequence(prefix)
+    }
+    fn scan_sequence(&self, prefix: &str, after: u64,
+        f: &mut dyn FnMut(u64, &[u8]) -> Result<()>) -> Result<u64> {
+        (**self).scan_sequence(prefix, after, f)
     }
 }
 
@@ -285,23 +305,21 @@ impl SeqLog {
         after: u64,
         f: &mut dyn FnMut(u64, &[u8]) -> Result<()>,
     ) -> Result<u64> {
-        let height = self.height()?;
+        let mut last = after;
+        let height = self.store.scan_sequence(&self.prefix, after, &mut |seq, body| {
+            let next = last.checked_add(1).context("sequence exceeds 64 bits")?;
+            if seq != next {
+                bail!("journal sequence {next} is missing under {} — a gap is not a skip", self.prefix);
+            }
+            f(seq, body)?;
+            last = seq;
+            Ok(())
+        })?;
         if after > height {
-            bail!(
-                "the journal is {height} entries and was read to {after} — an append-only \
-                 log does not shrink, so this is not the book that was read"
-            );
+            bail!("the journal is {height} entries and was read to {after} — an append-only log does not shrink, so this is not the book that was read");
         }
-        for seq in (after + 1)..=height {
-            let body = match self.get(seq)? {
-                Some(b) => b,
-                None => bail!(
-                    "journal sequence {seq} is missing under {} (height {height}) — a gap \
-                     in an append-only log is a different book, not a skip",
-                    self.prefix
-                ),
-            };
-            f(seq, &body)?;
+        if last != height {
+            bail!("journal sequence {} is missing under {} (height {height}) — a gap is not a skip", last.saturating_add(1), self.prefix);
         }
         Ok(height)
     }
@@ -310,6 +328,32 @@ impl SeqLog {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct BrokenScan { rows: Vec<u64>, height: u64 }
+    impl ObjectStore for BrokenScan {
+        fn put_if_absent(&self, _: &str, _: &[u8]) -> Result<bool> { unreachable!() }
+        fn get(&self, _: &str) -> Result<Option<Vec<u8>>> { unreachable!() }
+        fn list(&self, _: &str) -> Result<Vec<String>> { unreachable!() }
+        fn scan_sequence(&self, _: &str, _: u64,
+            f: &mut dyn FnMut(u64, &[u8]) -> Result<()>) -> Result<u64> {
+            for seq in &self.rows { f(*seq, b"body")?; }
+            Ok(self.height)
+        }
+    }
+    #[test]
+    fn an_optimized_scan_cannot_skip_truncate_or_repeat_a_sequence() {
+        for (rows,height) in [(vec![2],2), (vec![1],2), (vec![1,1],1)] {
+            let log=SeqLog::new(Arc::new(BrokenScan {rows,height}),"journal/");
+            let error=log.for_each_since(0,&mut |_,_|Ok(())).unwrap_err().to_string();
+            assert!(error.contains("missing") && error.contains("gap"),"{error}");
+        }
+    }
+    #[test]
+    fn a_reader_at_the_maximum_sequence_does_not_wrap_its_cursor() {
+        let log=SeqLog::new(Arc::new(MemoryStore::new()),"journal/");
+        assert!(log.claim(u64::MAX,b"last").unwrap());
+        assert_eq!(log.for_each_since(u64::MAX,&mut |_,_|panic!("no tail")).unwrap(),u64::MAX);
+    }
 
     struct MaxOnlyStore(MemoryStore);
 

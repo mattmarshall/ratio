@@ -1739,3 +1739,12 @@ failure probes passed their expected outcomes before any native journal code.
 Unique-key claim, commit-before-ack, and committed-only reads are independent
 load-bearing assumptions. A database scan must preserve missing-key refusal.
 The real client, backend fixture, cold-fold comparison, and #361 merge remain.
+
+The #362 native crate follows proof commit 84fbc2e. The native client is kept
+outside ratio-store so a device build does not inherit its networking runtime.
+PgStore moves synchronous driver work and destruction off caller Tokio runtimes.
+Do not wrap it in an ObjectStore that drops scan_sequence delegation: that
+would restore one get per journal entry. SeqLog checks contiguity independently
+of the optimized scan. The native fixture is an explicitly required live CI
+target; a machine without PostgreSQL can run the hermetic gate, but cannot
+claim the native adapter passed without its live target.

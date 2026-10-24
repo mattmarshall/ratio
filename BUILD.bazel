@@ -7,7 +7,7 @@ exports_files(["Cargo.toml"])
 # compares journal and side-plane behavior across registered backends.
 filegroup(
     name = "object_store_registry_sources",
-    srcs = ["//" + package + ":object_store_source_files" for package in subpackages(include = ["crates/*"])],
+    srcs = ["//" + package + ":object_store_source_files" for package in subpackages(include = ["crates/*"])] + [".github/workflows/build.yml"],
 )
 
 sh_test(

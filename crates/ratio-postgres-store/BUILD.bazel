@@ -1,0 +1,49 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+package(default_visibility = ["//visibility:public"])
+exports_files(["Cargo.toml"])
+rust_library(
+    name = "ratio-postgres-store",
+    srcs = glob(["src/*.rs"]),
+    crate_name = "ratio_postgres_store",
+    edition = "2021",
+    deps = [
+        "//crates/ratio-store",
+        "@crates//:anyhow",
+        "@crates//:postgres",
+        "@crates//:fallible-iterator",
+    ],
+)
+filegroup(
+    name = "object_store_source_files",
+    srcs = glob(["src/**/*.rs", "tests/**/*.rs"]),
+)
+rust_test(
+    name = "pg_conformance_test",
+    srcs = ["tests/conformance.rs"],
+    crate_root = "tests/conformance.rs",
+    edition = "2021",
+    tags = ["manual", "no-sandbox", "requires-network"],
+    deps = [
+        ":ratio-postgres-store",
+        "//crates/ratio-project:backend_fixture",
+        "//crates/ratio-store",
+        "@crates//:anyhow",
+    ],
+)
+
+rust_test(
+    name = "cold_fold_live_test",
+    srcs = ["tests/cold_fold.rs"],
+    crate_root = "tests/cold_fold.rs",
+    edition = "2021",
+    tags = ["manual", "requires-network"],
+    deps = [
+        ":ratio-postgres-store",
+        "//crates/ratio-gen",
+        "//crates/ratio-project",
+        "//crates/ratio-store",
+        "//proto:ratio_rust_proto",
+        "@crates//:anyhow",
+        "@crates//:prost",
+    ],
+)

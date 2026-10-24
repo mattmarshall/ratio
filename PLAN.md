@@ -5667,3 +5667,23 @@ three probes fail for lost-write or dirty-read invariants. The full sweep
 ran 45 probes, all red for their named reasons. No native journal code exists
 in this proof commit. #361's merge, implementation/client repin, live fixture,
 and equal-height cold-fold measurement remain before #362 can be complete.
+
+### October 23 — native journal adapter implementation (#362, partial)
+
+After the separate checked proof commit, `ratio-postgres-store` adds a native
+Rust client behind ObjectStore. The optional crate keeps networking out of the
+shared store dependency surface. Unique namespace/key inserts acknowledge
+only committed results; database scans stream an ordered repeatable-read
+snapshot through a bounded handoff. SeqLog independently refuses skipped,
+repeated, truncated, or shrinking prefixes. The local proof connector refuses
+remote plaintext; hosted callers must supply a TLS-connected client. The
+adapter requires fsync and enables synchronous commit. No hosted database or
+TLS deployment is claimed.
+
+The identical reusable journal/six-plane fixture passed live PostgreSQL 16,
+including two namespaces, a two-connection claim race, no-hole refusal on all
+seven planes, and consumer-error propagation. Required CI now runs that target
+beside the existing live projection test; the registry checks both fixture use
+and workflow presence. Bazel repinned postgres 0.19.14 / tokio-postgres 0.7.18
+with Cargo.lock and MODULE.bazel.lock committed together. Equal-height cold
+comparison and final CI remain; no performance claim yet.
