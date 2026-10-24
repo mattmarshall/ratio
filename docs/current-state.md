@@ -3,12 +3,17 @@
 Deployment dependency authentication (#382, October 23): the workflow logs
 into ECR Public before pulling the Lambda adapter, separately from its private
 ECR push login. The versioned bootstrap adds the required two token actions.
-The live bootstrap grant and successful pull/deploy/smoke still need proof;
-the observed failure is public-registry HTTP 429, before rollout.
+The approved bootstrap grant was applied and read back;
+[deployment and smoke passed](https://github.com/mattmarshall/ratio/actions/runs/39958721035)
+at `ba7bd9fa37884ff02a7d22def629f02f1a4d33ff`.
 
 The [October 22 recovery readiness audit](recovery-readiness.md) distinguishes
-verified main from the existing unmerged recovery/storage stack. Operational
-recovery and live-provider conformance remain prerequisites for #362.
+the initial state from the now-merged #264/#300 tooling and remaining
+unmerged storage stack. The approved [synthetic AWS drill](recovery-drill-2026-10-23.md)
+restored 33 objects with matching figures/digests, measured RPO 0 and RTO
+275.748 seconds against 60 minutes. Seven-day retained evidence includes all
+failures and passing CLI/HTTP/MCP writer continuations. Matt Marshall's independent
+acceptance and live-provider conformance remain prerequisites for #362.
 
 Native iOS build preparation (October 22): crate-universe includes device
 and simulator triples so the separate shell can compile a pinned kernel.
@@ -16,8 +21,10 @@ The shell pins merged revision `7b81c1d6f5648ba902d69f30401bf18eedcaf6e4`.
 [Shell PR #4](https://github.com/mattmarshall/ratio-ios/pull/4) and
 [PR #5](https://github.com/mattmarshall/ratio-ios/pull/5) have passing
 device/simulator archive, simulator APFS/digest, and C ABI checks. Physical
-device execution remains unproved. Neither shell PR is merged, and no iOS
-distribution or license decision is implied by these checks.
+device execution remains unproved. Both shell PRs are merged. The owner has
+selected private, all-rights-reserved shell source with no outside contributions;
+that record merged in shell PR #6. Kernel contribution-policy scope and its
+licensing record remain under iOS #3. Distribution remains a separate gate.
 
 Updated September 10, 2026. This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
@@ -114,7 +121,8 @@ messages also pass the [issue-completion check](issue-completion.md).
   configured object storage before book commands, including stdio MCP and
   person-only writes. A seeded-book regression verifies post, strike, close,
   approve, and accept refuse an unusable configured backend without a local
-  book mutation. Issue 300 remains open pending its PR and merge; the
+  book mutation. Issue 300's original PR #376 is merged; the live-discovered HTTP/S3 runtime
+  fix and evidence are in PR #384, pending CI, merge and verifier review; the
   external customer drill is #264 acceptance, not #300 acceptance.
   The integrated #264 slice also provides explicit local/S3 namespace capture
   and restore with a protobuf key/length/SHA-256 manifest published last.

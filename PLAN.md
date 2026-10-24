@@ -1,5 +1,16 @@
 # Ratio — path to revenue
 
+### October 23, 2026 — approved synthetic recovery rehearsal
+
+Related: #264 and #300. The owner approved a two-book AWS lab and named Matt
+Marshall as verifier. The [drill contract](docs/recovery-drill-2026-10-23.md)
+states RPO 0, RTO 60 minutes, and seven-day lab retention before timing starts.
+Original delivery bytes and synthetic Connect custody are in scope. A manual
+operator fixture calls the existing S3 adapter and kernel; no figure semantics
+change. Successful execution and independent acceptance remain required before
+recovery can pass; customer guarantees and live provider token custody are not
+inferred. #362 remains gated on recovery and live conformance.
+
 ### October 23, 2026 — authenticated public deployment dependency
 
 Related: #382. Deployment's public Lambda adapter pull twice exhausted the
@@ -5465,3 +5476,10 @@ local or S3 namespace explicitly and refuses occupied destinations; its
 directory test deletes the source before restore and corrupts a backup object.
 This makes the capture primitive runnable but does not establish a customer
 backup, retention policy, or signed recovery acceptance.
+
+2026-10-23 operational proof amendment: the approved synthetic recovery restored
+33 objects and both pinned figures, with measured RTO 275.748 seconds. A separate
+configured-writer run exposed a real HTTP/S3 nested-runtime startup panic after
+CLI and MCP writes succeeded. The runtime boundary fix changes no amount or
+journal admission rule. Retained failure evidence and pending continuation are
+recorded in `docs/recovery-drill-2026-10-23.md`; #264/#300 remain open.

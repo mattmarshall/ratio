@@ -1,8 +1,11 @@
 # Book recovery: inventory and local drill
 
-The [October 22 readiness audit](recovery-readiness.md) verifies that the
-existing recovery/storage PRs remain unmerged and lists the operational
-inputs still required. It records no live-provider or customer acceptance.
+The [October 22 readiness audit](recovery-readiness.md) preserves the initial
+state. Recovery PRs #375 and #376 have since merged. The owner-approved
+[synthetic AWS drill](recovery-drill-2026-10-23.md) now supplies the lab contract;
+measured results and all failed attempts are recorded there. Exact recovery
+and live writer continuations passed; independent verifier acceptance remains
+required.
 
 Related: [#264](https://github.com/mattmarshall/ratio/issues/264).
 Durable follow-on work: [#300](https://github.com/mattmarshall/ratio/issues/300).
@@ -11,9 +14,11 @@ Source review refreshed October 2, 2026 for the disposable #264 drill.
 Ratio does not yet have a demonstrated whole-book disaster recovery procedure
 for the deployed service. The journal's conditional S3 writes protect one part
 of a book. A book also needs its chart, configuration, identity, access grants,
-and the evidence attached to its figures. The #300 branch stores signed NAV
+and the evidence attached to its figures. Main now stores signed NAV
 strikes, reports, proposals, and audit lines in the configured object store;
-those changes still need a live, independent backup and restore drill.
+the approved synthetic drill now supplies separate live backup/restore evidence
+with RPO 0 and measured RTO 275.748 seconds. Customer operating guarantees and
+independent acceptance remain open.
 
 The first executable evidence is a disposable **local directory restore**. It
 checks a journal prefix and digest, two local configuration versions, a NAV
@@ -29,7 +34,7 @@ configuration, and digest fields, and proves the close still refuses a
 backdated post while allowing the next period.
 These tests are not an S3 recovery drill or a customer recovery commitment.
 
-The branch-local `//crates/ratio-console:operational_recovery_test` also copies
+The merged `//crates/ratio-console:operational_recovery_test` also copies
 one configured directory object store into an independent namespace, removes
 both original roots, and verifies the restored book from a fresh process.
 It checks journal digest, closes, accepted explanations, NAV replay, report
@@ -46,6 +51,11 @@ This is a disposable object-store drill; it does not prove a live S3 backup
 job, retention, or a customer RPO/RTO.
 
 ## Recovery objectives and ownership
+
+The following customer/pilot decisions remain distinct from the approved
+synthetic lab contract linked above. Lab RPO 0, RTO 60 minutes, seven-day
+evidence retention, Codex execution, and Matt Marshall verification are agreed;
+no customer production commitment is inferred.
 
 | Decision | Current state | Accountable role to assign before a pilot |
 |---|---|---|
@@ -294,9 +304,10 @@ so backup access control and retention protection are still operator decisions.
 
 - Published-book post-create configuration and membership transitions are
   durable; legacy unpublished books retain their local control-state risk.
-  The branch-local [#300](https://github.com/mattmarshall/ratio/issues/300)
-  work covers operational evidence and configured writers in local tests.
-  It remains unmerged. Its issue acceptance leaves external backup and the
+  The merged [#300](https://github.com/mattmarshall/ratio/issues/300)
+  work covers operational evidence and configured writers; PR #384 adds live
+  synthetic evidence and a discovered HTTP/S3 runtime fix, pending merge and
+  verifier acceptance. Its issue acceptance leaves external backup and the
   customer restore drill to #264.
 - No whole-book backup scheduler, retention policy, or live independent backup copy is established
   by this inventory. The S3 template configures encryption and prevents public

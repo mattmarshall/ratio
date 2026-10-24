@@ -1,6 +1,6 @@
 # Storage backends and the distribution model
 
-Status: **analysis with a branch-local #300 NAV evidence amendment.** The
+Status: **analysis with the merged #300 NAV evidence amendment.** The
 backend verdicts remain proposals. This maps the persistence layer and names
 the blockers between the current shape and a two-track distribution model —
 on-device Personal, hosted SQL for funds and shared workspaces.
