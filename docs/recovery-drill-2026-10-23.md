@@ -126,3 +126,44 @@ already restored namespace; the original backup, failure evidence, and prior
 serving root remain intact. RTO continues from the original source-loss start,
 including diagnosis and repair. It is not reset to hide the failed assertion.
 No final verification or verifier acceptance is claimed by this amendment.
+
+## Measured continuation result
+
+The explicit continuation passed against another absent serving root. It
+verified all 33 captured objects byte-for-byte, both recorded/replayed figures,
+all configuration histories, close/explanation metadata, report selection,
+reviewed draft, all three audit lines, original delivery bytes, and synthetic
+Connect custody. Reads and attempted writes by another book's member, revoked
+`guest`, and an outsider refused. A backdated post still refused; a next-period
+post claimed alpha's next slot and left beta unchanged.
+
+| Measurement | Result |
+|---|---|
+| Clean capture | 10.242 seconds; 33 objects; 50,749 bytes |
+| Deliberate source/root loss | 3.156 seconds |
+| Isolated S3 restore | 8.829 seconds |
+| Initial verification | Stopped after 9.919 seconds on the documented wrong audit-count assertion |
+| Explicit fresh-root continuation | 55.718 seconds; passed |
+| RPO | Zero acknowledged captured objects lost; alpha prefix 2 and beta prefix 1 reproduced |
+| RTO | **275.748 seconds (4 minutes 35.748 seconds)**, including the original failed verification, diagnosis, correction, rebuild, and continuation; below the agreed 60-minute lab target |
+
+Alpha's restored strike is NAV **60,000 minor units**, prefix **2**, digest
+`99f50131b5f23c1c52862dbb9013e26bc935c3a9044be3889eb902c7eb1349de`.
+Beta's is NAV **7,000 minor units**, prefix **1**, digest
+`ed32ca850fb5c1c13a2f188d66cab3b3123b81eb49ab9a80f281c6eca389afdb`.
+The subsequent next-period alpha append is an additional readiness probe, not
+a change to either pinned strike's captured prefix.
+
+`evidence/attempt-2.zip` in the retained backup bucket includes the original
+failure and continuation protobufs/logs. Its readback reproduced SHA-256
+`df674bd4af0e422bd6a41034fc61a09fd586b470a563215b4c180df7facbd029`;
+readback also confirmed AES-256 encryption and GOVERNANCE Object Lock.
+Initial helper source is `ac101830b01f05e39d8feac4f0c3a42bfa7843c0`;
+the inspected audit correction/continuation is
+`a730bf91f8bebc146426c7cbe4b798352b0c2720`.
+
+Matt Marshall's independent acceptance is **pending**. This result measures
+fresh-process Console read/write readiness, not deployment of a public restore
+endpoint, customer guarantees, provider OAuth resumption, or cross-account
+disaster recovery. Supplemental real CLI, HTTP, and stdio MCP writer probes run
+on another snapshot copy under `writers/`, outside the measured recovery clock.
