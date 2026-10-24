@@ -5510,3 +5510,11 @@ conformance for #357–#360 remains the gate for #362. The current checkpoint
 slice adds a manual production-S3 harness; seeded demo cold/checkpoint/tail
 measurements and small checkpoint-corruption cases are distinct, with no
 performance claim until measured. No accounting semantics change.
+
+2026-10-23 #357 provider result: the seeded 5,396-entry S3 journal measured
+792,031 ms for a miss/full fold, 355,170 ms for a fresh-process checkpoint hit,
+and 352,426 ms with one tail entry. All view balances and NAV prefix pins
+matched; live corruption/version/prefix cases named their fallback reasons,
+telemetry carried metrics only, and book fingerprints stayed unchanged.
+Immutable evidence and single-run/shared-host limitations are in
+`docs/storage-provider-conformance.md`. This is not a gateway-latency solution.

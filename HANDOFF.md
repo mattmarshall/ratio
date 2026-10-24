@@ -1637,3 +1637,9 @@ its live-provider harness uses the 20-security/40-lot/3-currency seeded geometry
 separate fresh processes, exact prefix/trial-balance comparisons, book-tree
 fingerprints, telemetry privacy, and live checkpoint negative cases. Do not
 confuse earlier directory/emulated timing results with provider evidence.
+
+2026-10-23 #357 live S3 passed: full seeded fold 792.031 s, checkpoint hit
+355.170 s, one-entry tail 352.426 s; prefix reads remain. All view/pin,
+book-fingerprint, telemetry and negative-fallback assertions passed. The
+immutable protobuf/log archive and its SHA are in the provider report. Do not
+promise API Gateway cold-start latency from these operator-host measurements.

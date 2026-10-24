@@ -14,7 +14,9 @@ restored 33 objects with matching figures/digests, measured RPO 0 and RTO
 275.748 seconds against 60 minutes. Seven-day retained evidence includes all
 failures and passing CLI/HTTP/MCP writer continuations. Matt Marshall accepted
 the documented synthetic results; #264/#300 are complete for that scope.
-[Live-provider conformance](storage-provider-conformance.md) remains the gate for #362.
+The [live checkpoint provider run](storage-provider-conformance.md) passed,
+including cold/checkpoint/tail measurements and negative cases. #358–#360
+conformance remains the gate for #362.
 
 Native iOS build preparation (October 22): crate-universe includes device
 and simulator triples so the separate shell can compile a pinned kernel.
