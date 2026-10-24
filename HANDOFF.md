@@ -1822,3 +1822,14 @@ discard trapped/timed-out instances, and never treat progress as a figure.
 The report now separates peak linear allocation from macOS peak physical
 footprint, not RSS, retaining original child measurements and raw counters.
 All 25 canonical records and four footprint child records are preserved.
+
+## October 24 — OPFS proof before adapter (#365)
+
+#364 merged as `64f0c8cbdcf2717717b32a67c1c3fc5d49fe0303` after final CI
+`40065694985` passed. The next slice's ownership model passed 91 states and
+the complete 49-probe sweep. Its first crash rule was too broad: one dead
+worker could erase another live worker's in-flight state. It was corrected
+before proof commit; the final negative trace is the actual same-position
+overwrite race. No adapter code has been written at this gate. Read the
+[protocol and pending evidence](docs/opfs-storage.md). Explicit host backend
+handles must preserve per-book routing; do not introduce a wasm global store.

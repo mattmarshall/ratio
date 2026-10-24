@@ -5767,3 +5767,14 @@ and watchdog repeat are retained and that diagnostic profile is unsupported.
 The default remains 1 GiB. Peak physical footprint at its fitting boundaries
 was 981,079,368 / 1,031,656,704 bytes, measured by the macOS peak-footprint
 counter separately from linear allocation. RSS is not substituted.
+
+### October 24 — OPFS ownership proof gate (#365, in progress)
+
+The wasm slice merged after required CI passed. Before adapter code,
+`OPFSJournal.tla` models exclusive ownership through prepare/write/flush/ack,
+including crash/reload and complete unknown outcomes. The positive model
+passed 91 states; removing ownership exclusion breaks `NoWriteIsLost` for
+the write race. All 49 executable mutation probes fail for their named reason.
+The planned Web Lock/exclusive-handle realization, explicit backend binding,
+and [remaining browser/conformance evidence](docs/opfs-storage.md) are recorded.
+No OPFS adapter or browser product is claimed Built at this proof gate.

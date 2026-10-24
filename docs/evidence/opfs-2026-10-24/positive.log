@@ -1,0 +1,40 @@
+INFO: Invocation ID: cec447c2-7dbe-448e-a8fb-76f1a242daa7
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+Analyzing: 2 targets (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed 2 targets (0 packages loaded, 0 targets configured).
+INFO: From TLC checking tla/MCOPFSJournal.tla:
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 124 and seed 6842964332676707108 with 1 worker on 14 cores with 5461MB heap and 64MB offheap memory [pid: 11343] (Mac OS X 26.5.2 aarch64, Azul Systems, Inc. 17.0.14 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <checkout>/tla/MCOPFSJournal.tla
+Parsing file <checkout>/tla/OPFSJournal.tla
+Parsing file /private/var/folders/ty/010rp7j57zvfxlb83mbpc0t40000gn/T/tmp.FRBBvMdfDe/Naturals.tla
+Parsing file /private/var/folders/ty/010rp7j57zvfxlb83mbpc0t40000gn/T/tmp.FRBBvMdfDe/FiniteSets.tla
+Parsing file /private/var/folders/ty/010rp7j57zvfxlb83mbpc0t40000gn/T/tmp.FRBBvMdfDe/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module OPFSJournal
+Semantic processing of module MCOPFSJournal
+Starting... (2026-10-24 01:28:47)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-24 01:28:47.
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 9.4E-16
+282 states generated, 91 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 11.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 2 and the 95th percentile is 2).
+Finished in 00s at (2026-10-24 01:28:47)
+INFO: Found 2 test targets...
+INFO: Elapsed time: 1.107s, Critical Path: 0.95s
+INFO: 3 processes: 5 action cache hit, 1 remote cache hit, 2 darwin-sandbox.
+INFO: Build completed successfully, 3 total actions
+INFO: 
+
+Executed 1 out of 2 tests: 2 tests pass.
+There were tests whose specified size is too big. Use the --test_verbose_timeout_warnings command line option to see which ones these are.

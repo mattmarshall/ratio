@@ -1,0 +1,105 @@
+INFO: Invocation ID: 72a56642-e789-408a-b295-eccabc4b90fc
+Computing main repo mapping: 
+Loading: 
+Loading: 0 packages loaded
+Analyzing: target //tla:opfs_no_exclusion_check (0 packages loaded, 0 targets configured)
+Analyzing: target //tla:opfs_no_exclusion_check (0 packages loaded, 0 targets configured)
+
+INFO: Analyzed target //tla:opfs_no_exclusion_check (0 packages loaded, 0 targets configured).
+ERROR: <checkout>/tla/BUILD.bazel:18:10: TLC checking tla/OPFSNoExclusion.tla failed: (Exit 1): bash failed: error executing TlcCheck command (from target //tla:opfs_no_exclusion_check.run) /bin/bash -c ... (remaining 1 argument skipped)
+
+Use --sandbox_debug to see verbose messages from the sandbox and retain the sandbox build root for debugging
+rules_tla: TLC exited non-zero
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 107 and seed 3438013174549133554 with 1 worker on 14 cores with 5461MB heap and 64MB offheap memory [pid: 12480] (Mac OS X 26.5.2 aarch64, Azul Systems, Inc. 17.0.14 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file <checkout>/tla/OPFSNoExclusion.tla
+Parsing file <checkout>/tla/OPFSJournal.tla
+Parsing file /private/var/folders/ty/010rp7j57zvfxlb83mbpc0t40000gn/T/tmp.MXHRNMUy9g/Naturals.tla
+Parsing file /private/var/folders/ty/010rp7j57zvfxlb83mbpc0t40000gn/T/tmp.MXHRNMUy9g/FiniteSets.tla
+Parsing file /private/var/folders/ty/010rp7j57zvfxlb83mbpc0t40000gn/T/tmp.MXHRNMUy9g/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module OPFSJournal
+Semantic processing of module OPFSNoExclusion
+Starting... (2026-10-24 01:33:33)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-24 01:33:33.
+Error: Invariant NoWriteIsLost is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ target = (a :> 0 @@ b :> 0)
+/\ owners = {}
+/\ volatile = <<none, none>>
+/\ phase = (a :> 0 @@ b :> 0)
+/\ durable = <<none, none>>
+/\ acked = {}
+
+State 2: <Acquire line 29, col 5 to line 32, col 60 of module OPFSJournal>
+/\ target = (a :> 0 @@ b :> 0)
+/\ owners = {a}
+/\ volatile = <<none, none>>
+/\ phase = (a :> 0 @@ b :> 0)
+/\ durable = <<none, none>>
+/\ acked = {}
+
+State 3: <Prepare line 35, col 5 to line 40, col 53 of module OPFSJournal>
+/\ target = (a :> 1 @@ b :> 0)
+/\ owners = {a}
+/\ volatile = <<none, none>>
+/\ phase = (a :> 1 @@ b :> 0)
+/\ durable = <<none, none>>
+/\ acked = {}
+
+State 4: <Acquire line 29, col 5 to line 32, col 60 of module OPFSJournal>
+/\ target = (a :> 1 @@ b :> 0)
+/\ owners = {a, b}
+/\ volatile = <<none, none>>
+/\ phase = (a :> 1 @@ b :> 0)
+/\ durable = <<none, none>>
+/\ acked = {}
+
+State 5: <Prepare line 35, col 5 to line 40, col 53 of module OPFSJournal>
+/\ target = (a :> 1 @@ b :> 1)
+/\ owners = {a, b}
+/\ volatile = <<none, none>>
+/\ phase = (a :> 1 @@ b :> 1)
+/\ durable = <<none, none>>
+/\ acked = {}
+
+State 6: <Write line 43, col 5 to line 48, col 51 of module OPFSJournal>
+/\ target = (a :> 1 @@ b :> 1)
+/\ owners = {a, b}
+/\ volatile = <<a, none>>
+/\ phase = (a :> 2 @@ b :> 1)
+/\ durable = <<none, none>>
+/\ acked = {}
+
+State 7: <Write line 43, col 5 to line 48, col 51 of module OPFSJournal>
+/\ target = (a :> 1 @@ b :> 1)
+/\ owners = {a, b}
+/\ volatile = <<b, none>>
+/\ phase = (a :> 2 @@ b :> 2)
+/\ durable = <<none, none>>
+/\ acked = {}
+
+State 8: <FlushAndAck line 51, col 5 to line 56, col 45 of module OPFSJournal>
+/\ target = (a :> 1 @@ b :> 1)
+/\ owners = {a, b}
+/\ volatile = <<b, none>>
+/\ phase = (a :> 3 @@ b :> 2)
+/\ durable = <<b, none>>
+/\ acked = {a}
+
+236 states generated, 76 distinct states found, 30 states left on queue.
+The depth of the complete state graph search is 8.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 3 and the 95th percentile is 3).
+Finished in 00s at (2026-10-24 01:33:33)
+Target //tla:opfs_no_exclusion_check failed to build
+Use --verbose_failures to see the command lines of failed build steps.
+INFO: Elapsed time: 1.092s, Critical Path: 0.95s
+INFO: 2 processes: 1 action cache hit, 2 internal.
+ERROR: Build did NOT complete successfully
+//tla:opfs_no_exclusion_check                                   FAILED TO BUILD
+
+Executed 0 out of 1 test: 1 fails to build.
