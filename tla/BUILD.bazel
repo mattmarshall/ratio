@@ -2,6 +2,28 @@ load("@rules_tla//tla:defs.bzl", "tla_check", "tla_library")
 
 package(default_visibility = ["//visibility:public"])
 
+tla_library(
+    name = "opfs_journal",
+    srcs = ["OPFSJournal.tla"],
+)
+
+tla_check(
+    name = "opfs_journal_check",
+    size = "medium",
+    config = "MCOPFSJournal.cfg",
+    module = "MCOPFSJournal.tla",
+    deps = [":opfs_journal"],
+)
+
+tla_check(
+    name = "opfs_no_exclusion_check",
+    size = "medium",
+    config = "OPFSNoExclusion.cfg",
+    module = "OPFSNoExclusion.tla",
+    deps = [":opfs_journal"],
+    tags = ["manual"],
+)
+
 # Complete durable book bootstrap, published once. Staging cannot expose a
 # partial book or grant its losing creator membership. Related: #297 / #291.
 tla_library(

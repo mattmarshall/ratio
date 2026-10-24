@@ -53,6 +53,8 @@ pub mod bootstrap;
 pub mod recovery;
 pub mod control;
 mod file_state;
+#[cfg(target_arch = "wasm32")]
+pub mod opfs;
 pub use objects::{
     DirStore, MemoryStore, ObjectStore, SeqLog,
 };

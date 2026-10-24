@@ -1,0 +1,33 @@
+load("@rules_python//python:defs.bzl", "py_binary")
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "wire.mjs",
+    "host.mjs",
+    "object-log.mjs",
+    "lease.mjs",
+    "worker.mjs",
+])
+
+genrule(
+    name = "expected_fixture",
+    outs = ["native-fixture.json"],
+    cmd = 'TEST_TMPDIR="$(@D)/opfs-baseline-tmp" $(execpath //crates/ratio-project:wasm_fixture_baseline) > $@',
+    tools = ["//crates/ratio-project:wasm_fixture_baseline"],
+)
+
+py_binary(
+    name = "verification_server",
+    srcs = ["server.py"],
+    main = "server.py",
+    args = ["38565", "$(rootpath index.html)", "$(rootpath wire.mjs)", "$(rootpath host.mjs)", "$(rootpath object-log.mjs)", "$(rootpath lease.mjs)", "$(rootpath worker.mjs)", "$(rootpath //crates/ratio-project:opfs_conformance)", "$(rootpath :expected_fixture)"],
+    data = ["index.html", "wire.mjs", "host.mjs", "object-log.mjs", "lease.mjs", "worker.mjs", "//crates/ratio-project:opfs_conformance", ":expected_fixture"],
+    tags = ["manual"],
+)
+
+sh_test(
+    name = "adapter_simulation_test",
+    srcs = ["simulation.sh"],
+    args = ["$(rootpath simulation.mjs)", "$(rootpath //crates/ratio-project:opfs_conformance)", "$(rootpath :expected_fixture)"],
+    data = ["simulation.mjs", "wire.mjs", "host.mjs", "object-log.mjs", "//crates/ratio-project:opfs_conformance", ":expected_fixture"],
+)

@@ -29,6 +29,7 @@ aip_proto_library(
         "ratio/storage/v1/conformance.proto",
         "ratio/storage/v1/file_state.proto",
         "ratio/storage/v1/wasm.proto",
+        "ratio/storage/v1/opfs.proto",
         "ratio/console/v1/connect.proto",
         "ratio/console/v1/tax_pack.proto",
         "ratio/v1/ledger.proto",
@@ -170,4 +171,10 @@ proto_encoder(
     name = "encode_connect_grants",
     proto = ":ratio_proto",
     message = "ratio.console.v1.ConnectTemplateGrants",
+)
+
+proto_encoder(
+    name = "encode_backend_conformance_evidence",
+    proto = ":ratio_proto",
+    message = "ratio.storage.v1.BackendConformanceEvidence",
 )

@@ -590,3 +590,20 @@ two-view cleanup; its failure is preserved and that profile is unsupported.
 The default 1 GiB module and page-below-address-limit diagnostic have verified
 success/refusal boundaries. The host must discard an instance after a trap or
 watchdog timeout rather than read a partial projection.
+
+## OPFS adapter in verification (#365)
+
+`ratio_store::opfs::OpfsStore` is wasm-only and requires an explicit host
+binding. Each namespace uses an append-only protobuf object-frame file under
+`ratio-object-log-v1/`; digest protection covers the key, body, and version.
+The dedicated worker must hold both its namespace Web Lock and exclusive
+synchronous access handle through flush/ack. No `create:true` CAS or global
+default backend is assumed. The frame limit is 16 MiB; oversized operations
+refuse. The key/offset index does not retain all journal bodies, but its own
+O(object-count) metadata memory is outside the #364 kernel measurements.
+
+The build-enforced gate runs the actual Rust wasm adapter with an explicitly
+labeled fs-backed handle simulation. Actual browser OPFS and reload/second-tab
+evidence now pass at the recorded clean revision. No browser product, browser-scale memory/performance,
+off-device backup, or eviction guarantee is claimed. Read the
+[ownership protocol](opfs-storage.md) before changing this adapter.

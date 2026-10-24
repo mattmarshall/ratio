@@ -1,0 +1,55 @@
+<!doctype html><meta charset="utf-8"><title>Ratio OPFS verification</title>
+<style>body{font:16px system-ui;max-width:1000px;margin:40px auto;padding:0 24px;color:#15212b;background:#f7f7f4}button,input{font:inherit;padding:10px;margin:4px}pre{white-space:pre-wrap;background:white;padding:18px;border:1px solid #ccd4d5}h1{font-size:26px}</style>
+<h1>Ratio OPFS verification</h1>
+<p>Synthetic lab only. Kernel figures stay in Ratio. The fs-backed CI simulation is separate from this browser run.</p>
+<label>Lab namespace <input id="namespace" size="38"></label><button id="start">Start or attach</button>
+<p><a id="second" target="_blank">Open this lab in a second tab</a></p>
+<div><button data-op="2">Seed and compare</button><button data-op="3">Replay retained book</button><button data-op="4">Append one posting</button><button data-op="6">Interrupt next append</button><button data-op="5">Check ownership</button></div>
+<pre id="status" aria-live="polite">Not started. Use a fresh lab namespace; no existing data is deleted.</pre>
+<pre id="history"></pre>
+<details><summary>Protobuf verification receipt</summary><pre id="receipt" data-testid="receipt"></pre></details>
+<script type="module">
+import {encodeRequest,decodeReply,text} from './wire.mjs';
+const status=document.querySelector('#status'),transcript=document.querySelector('#history'),input=document.querySelector('#namespace');
+const params=new URL(location.href).searchParams;
+input.value=params.get('namespace')||`ratio365lab-${crypto.randomUUID().slice(0,8)}`;
+let worker,channel,namespace,role='not started';const pending=new Map();
+function link(){const url=new URL(location.href);url.searchParams.set('namespace',input.value);document.querySelector('#second').href=url;}
+input.addEventListener('input',link);link();
+function render(reply){
+  let summary='';
+  if(reply.fixtureJson.length){const shape=JSON.parse(text(reply.fixtureJson));summary=`\nJournal height: ${shape[0].length}\nPrefix digest: ${shape[2].at(-1)}\nTrial balance: ${shape[3].join(' / ')}\nSix side planes: ${shape[1].map(p=>p.length).join(', ')}`;}
+  const report=`${reply.passed?'PASS':'REFUSED'} | tab role: ${role}\n${reply.detail}\nOwner: ${reply.ownerId||'none'}\nHeld namespace locks: ${reply.heldLockCount}\nWrite acknowledged: ${reply.writeAcknowledged}${summary}`;
+  document.querySelector('#receipt').textContent=btoa(String.fromCharCode(...reply.wireBytes));
+  status.textContent=report;transcript.textContent+=`${report}\n\n`;
+}
+function receive(data){const raw=new Uint8Array(data),reply=decodeReply(raw);reply.wireBytes=raw;const wait=pending.get(reply.correlationId);if(wait){pending.delete(reply.correlationId);wait.resolve(reply);}}
+function send(operation,viaWorker=false){
+  const correlationId=crypto.randomUUID(),bytes=encodeRequest({correlationId,operation,namespace,binding:1});
+  return new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>{pending.delete(correlationId);reject(new Error('No reply: outcome unknown. Reconcile before retrying; no lease is stolen.'));},20000);
+    pending.set(correlationId,{resolve:r=>{clearTimeout(timer);resolve(r);}});
+    if(viaWorker)worker.postMessage(bytes);else channel.postMessage(bytes);
+  });
+}
+document.querySelector('#start').onclick=async()=>{
+  try{
+    namespace=input.value;if(!/^ratio365lab-[A-Za-z0-9_-]+$/.test(namespace))throw new Error('Use a ratio365lab- namespace');
+    const address=new URL(location.href);address.searchParams.set('namespace',namespace);history.replaceState(null,'',address);
+    input.disabled=true;document.querySelector('#start').disabled=true;
+    channel=new BroadcastChannel(`ratio:opfs:probe:${namespace}`);channel.onmessage=e=>receive(e.data);
+    worker=new Worker('./worker.mjs',{type:'module'});worker.onmessage=e=>receive(e.data);
+    const reply=await send(1,true);role=reply.role===1?'owner':reply.role===2?'client':'unavailable';render(reply);
+  }catch(error){status.textContent=String(error);}
+};
+for(const button of document.querySelectorAll('[data-op]'))button.onclick=async()=>{
+  try{
+    if(!channel)throw new Error('Start or attach first');
+    const operation=Number(button.dataset.op),reply=await send(operation);
+    if(operation===2&&reply.passed){const expected=await(await fetch('./native-fixture.json')).json();
+      if(JSON.stringify(JSON.parse(text(reply.fixtureJson)))!==JSON.stringify(expected))throw new Error('Native JSONL fixture comparison failed');
+      reply.detail+='; native JSONL comparison passed';}
+    render(reply);
+  }catch(error){status.textContent=String(error);}
+};
+</script>

@@ -8,7 +8,8 @@ matches actual wasm bytes, all plane/digest pins, and figures. Its measured
 1 GiB linear-memory ceiling is 20,486,308 entries for one recorded view and
 10,246,267 for two at the tested 10,000-security shape. Adjacent entries refuse;
 larger-memory controls pass. See [measurement and limits](wasm-capacity.md).
-Final #364 CI remains the merge gate. OPFS ownership/reload proof (#365) and
+#364 merged after [final CI passed](https://github.com/mattmarshall/ratio/actions/runs/40065694985).
+OPFS ownership/reload proof (#365) and
 the approved limited broker scope (#366) follow in order. Physical iOS
 execution and the separate kernel contribution-policy decision remain open.
 
@@ -18,6 +19,15 @@ linear allocation and RSS. A page-below-4-GiB diagnostic fits 81,926,356 /
 40,966,350 entries, with the next entry refusing. The exact-4-GiB two-view
 diagnostic did not return after post-fold validation; its timed-out evidence
 is retained and that profile is unsupported. The default stays at 1 GiB.
+
+#365 passed its proof gate: 91 positive model states, a named lost-write
+counterexample without exclusion, and all 49 executable probes verified.
+The [protocol](opfs-storage.md) preceded adapter code. The explicit-binding
+Rust adapter now compiles and passes the persistent-handle simulation and
+shared native/wasm fixture. [Actual browser evidence](opfs-storage.md) now
+proves second-tab exclusion, partial-write refusal, owner reload, retained
+figures/digests, durable client acknowledgment, and namespace isolation.
+Final exact-head CI remains before #365 completion.
 
 Deployment dependency authentication (#382, October 23): the workflow logs
 into ECR Public before pulling the Lambda adapter, separately from its private

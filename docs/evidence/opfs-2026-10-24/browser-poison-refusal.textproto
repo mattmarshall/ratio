@@ -1,0 +1,5 @@
+correlation_id: "2c9e4395-7972-4abe-8dd0-49874003b50f"
+role: OPFS_PROBE_ROLE_OWNER
+detail: "OPFS backend binding has no exclusive owner"
+owner_id: "1db8e77d-2b05-4e1e-b9c8-3b02dfb4658e"
+held_lock_count: 1

@@ -5,6 +5,17 @@ package(default_visibility = ["//visibility:public"])
 exports_files(["Cargo.toml"])
 exports_files(["tests/object_store_registry_gate.py"])
 
+rust_shared_library(
+    name = "opfs_conformance",
+    platform = "//:wasm32",
+    srcs = ["tests/opfs_conformance.rs"],
+    crate_root = "tests/opfs_conformance.rs",
+    edition = "2021",
+    rustc_flags = ["-C", "link-arg=--max-memory=1073741824"],
+    tags = ["manual"],
+    deps = [":backend_fixture", "//crates/ratio-store", "//proto:ratio_rust_proto", "@crates//:prost", "@crates//:anyhow", "@crates//:serde_json"],
+)
+
 # ⛔ The derived read model. `//tla:projection_check` is its safety argument and
 # `//tla:unpinned_projection_check` is the failure it prevents: a figure that
 # pins one journal position and reads a projection built from another.
@@ -163,6 +174,7 @@ test_suite(
     tests = [
         ":backend_conformance_test",
         ":wasm_conformance_test",
+        "//browser/opfs:adapter_simulation_test",
         ":ratio-project_test",
         "//crates/ratio-store:ratio-store_test",
         "//crates/ratio:ratio_test",
@@ -175,5 +187,5 @@ test_suite(
 # Source inventory for the build-enforced ObjectStore conformance registry.
 filegroup(
     name = "object_store_source_files",
-    srcs = glob(["src/**/*.rs"]) + ["tests/backend_conformance.rs", "tests/backend_fixture.rs", "tests/wasm_conformance.rs"],
+    srcs = glob(["src/**/*.rs"]) + ["tests/backend_conformance.rs", "tests/backend_fixture.rs", "tests/wasm_conformance.rs", "tests/opfs_conformance.rs", "BUILD.bazel"],
 )
