@@ -71,3 +71,26 @@ appends record both curves; a regression on the smaller shape must be reported,
 not hidden by the asymptotic bound. Occupied claims must refuse without
 changing acknowledged bytes, and a separate missing-slot log must refuse
 replay. This does not fold a figure or mutate the running #357 fixture.
+
+### Initial live height result and correction
+
+Source `8404c1a285741a1925c28c4aa7c8aef40a572a01`, three paired samples:
+
+| Seed height | Full-list height median | One-key bounded height median | Full-list append | Bounded append |
+|---|---:|---:|---:|---:|
+| 5,396 | 823 ms | 1,419 ms | 1,207 ms | 1,456 ms |
+| 65,536 | 10,111 ms | 1,727 ms | 9,194 ms | 1,848 ms |
+
+The bounded-only implementation regresses the deployed smaller shape. Retain
+this result; it is not a failed claim/conservation test. The initial measurement
+also passed actual conditional overwrite refusal, unchanged acknowledged bytes,
+and missing-first-slot replay refusal. Appends compare adjacent heights (N and
+N+1), not two simultaneous writes against the same head.
+
+The correction streams one 1,000-key page at a time for smaller logs and uses
+a bounded search above a 32,768-entry threshold, selected between the measured
+shapes rather than claimed optimal. Small logs never accumulate every key in
+one vector; large logs avoid reading every page. The claim remains conditional.
+A separate `adaptive` attempt remeasures the same retained fixtures after the
+two acknowledged initial append probes (N+2), preserving the original record.
+Shared-host/provider timings are observations, not a capacity guarantee.

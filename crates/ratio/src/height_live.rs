@@ -98,21 +98,33 @@ fn height_and_append_cost_are_measured_on_live_s3() -> Result<()> {
             evidence.checks.push(check("publish-height-fixtures",start,"Two complete contiguous journals: 5396 and 65536 entries; bounded 32-worker upload excluded from append timing".into()));
             return Ok(());
         }
-        ensure!(phase == "measure", "known phase required");
+        ensure!(
+            phase == "measure" || phase == "adaptive",
+            "known phase required"
+        );
+        if phase == "adaptive" {
+            let prior =
+                BackendConformanceEvidence::decode(fs::read(root.join("measure.pb"))?.as_slice())?;
+            ensure!(
+                prior.checks.iter().all(|c| c.passed),
+                "preserved original measurement must pass"
+            );
+        }
         for height in [5396u64, 65536] {
             let key = format!("n-{height}/journal/");
+            let expected = height + if phase == "adaptive" { 2 } else { 0 };
             let before = SeqLog::new(Arc::new(Listed(store.clone())), &key);
             let after = SeqLog::new(store.clone(), &key);
             for sample in 0..3 {
                 let t = Instant::now();
-                ensure!(before.height()? == height, "baseline height");
+                ensure!(before.height()? == expected, "baseline height");
                 evidence.checks.push(check(
                     &format!("listing-height-{height}-{sample}"),
                     t,
                     "Full listing default; actual provider timing".into(),
                 ));
                 let t = Instant::now();
-                ensure!(after.height()? == height, "optimized height");
+                ensure!(after.height()? == expected, "optimized height");
                 evidence.checks.push(check(
                     &format!("bounded-height-{height}-{sample}"),
                     t,
@@ -124,7 +136,7 @@ fn height_and_append_cost_are_measured_on_live_s3() -> Result<()> {
                 .expect("fixture entry");
             let t = Instant::now();
             ensure!(
-                before.append(&body)? == height + 1,
+                before.append(&body)? == expected + 1,
                 "baseline next conditional slot"
             );
             evidence.checks.push(check(
@@ -134,7 +146,7 @@ fn height_and_append_cost_are_measured_on_live_s3() -> Result<()> {
             ));
             let t = Instant::now();
             ensure!(
-                after.append(&body)? == height + 2,
+                after.append(&body)? == expected + 2,
                 "optimized next conditional slot"
             );
             evidence.checks.push(check(
@@ -143,15 +155,15 @@ fn height_and_append_cost_are_measured_on_live_s3() -> Result<()> {
                 "Production height plus real conditional append".into(),
             ));
             ensure!(
-                !store.put_if_absent(&format!("{key}{:020}", height + 2), b"overwrite")?,
+                !store.put_if_absent(&format!("{key}{:020}", expected + 2), b"overwrite")?,
                 "occupied conditional slot overwritten"
             );
             ensure!(
-                store.get(&format!("{key}{:020}", height + 2))? == Some(body),
+                store.get(&format!("{key}{:020}", expected + 2))? == Some(body),
                 "acknowledged body changed"
             );
         }
-        let hole = SeqLog::new(store.clone(), "hole/journal/");
+        let hole = SeqLog::new(store.clone(), format!("hole-{phase}/journal/"));
         ensure!(hole.claim(2, b"later")?, "fresh hole fixture");
         let error = hole
             .for_each_since(0, &mut |_, _| Ok(()))

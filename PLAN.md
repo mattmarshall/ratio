@@ -5535,3 +5535,9 @@ curves use complete synthetic journals of 5,396 and 65,536 entries, separate
 from the running #357 fold. The bounded lookup's fewer returned keys is not a
 latency claim; both request-round-trip and payload tradeoffs must be reported.
 Conditional claims and hole refusal remain prerequisites.
+
+2026-10-23 #358 live correction: bounded-only height regressed 5,396 entries
+(1,419 ms median versus 823 ms full-list), while improving 65,536 entries
+(1,727 ms versus 10,111 ms). Preserve both curves. Use constant-memory page
+streaming for smaller logs and bounded search above a measured-shape threshold;
+remeasure before claiming completion. No claim or hole-refusal rule changes.

@@ -8,7 +8,7 @@ import re
 import subprocess
 
 parser=argparse.ArgumentParser()
-parser.add_argument("phase",choices=["seed","measure"])
+parser.add_argument("phase",choices=["seed","measure","adaptive"])
 args=parser.parse_args()
 repo=Path(__file__).resolve().parent.parent
 assert not subprocess.check_output(["git","status","--porcelain"],cwd=repo), "commit source before execution"
