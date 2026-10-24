@@ -3,11 +3,14 @@
 Deployment dependency authentication (#382, October 23): the workflow logs
 into ECR Public before pulling the Lambda adapter, separately from its private
 ECR push login. The versioned bootstrap adds the required two token actions.
-The live bootstrap grant and successful pull/deploy/smoke still need proof;
-the observed failure is public-registry HTTP 429, before rollout.
+The approved bootstrap grant was applied and read back;
+[deployment and smoke passed](https://github.com/mattmarshall/ratio/actions/runs/39958721035)
+at `ba7bd9fa37884ff02a7d22def629f02f1a4d33ff`.
 
 The [October 22 recovery readiness audit](recovery-readiness.md) distinguishes
-verified main from the existing unmerged recovery/storage stack. Operational
+the initial state from the now-merged #264/#300 tooling and remaining
+unmerged storage stack. The approved [synthetic AWS drill](recovery-drill-2026-10-23.md)
+has RPO 0, RTO 60 minutes, seven-day retention, and Matt Marshall as verifier. Operational
 recovery and live-provider conformance remain prerequisites for #362.
 
 Native iOS build preparation (October 22): crate-universe includes device
@@ -16,8 +19,9 @@ The shell pins merged revision `7b81c1d6f5648ba902d69f30401bf18eedcaf6e4`.
 [Shell PR #4](https://github.com/mattmarshall/ratio-ios/pull/4) and
 [PR #5](https://github.com/mattmarshall/ratio-ios/pull/5) have passing
 device/simulator archive, simulator APFS/digest, and C ABI checks. Physical
-device execution remains unproved. Neither shell PR is merged, and no iOS
-distribution or license decision is implied by these checks.
+device execution remains unproved. Both shell PRs are merged. The owner has
+selected private, all-rights-reserved shell source with no outside contributions;
+that record is being finalized under iOS #3. Distribution remains a separate gate.
 
 Updated September 10, 2026. This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in

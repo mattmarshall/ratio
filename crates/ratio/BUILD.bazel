@@ -10,6 +10,7 @@ rust_binary(
         "src/main.rs",
         "src/scale.rs",
         "src/watch.rs",
+        "src/recovery_live.rs",
     ],
     edition = "2021",
     deps = [
@@ -49,6 +50,14 @@ rust_test(
     name = "ratio_test",
     crate = ":ratio",
     edition = "2021",
+)
+
+rust_test(
+    name = "recovery_live_test",
+    crate = ":ratio",
+    edition = "2021",
+    tags = ["manual", "requires-network"],
+    args = ["--ignored", "--exact", "recovery_live::the_approved_synthetic_s3_rehearsal"],
 )
 
 sh_test(

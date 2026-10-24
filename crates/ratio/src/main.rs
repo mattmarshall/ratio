@@ -18,6 +18,10 @@ use ratio_store::{
 };
 use serde::Deserialize;
 
+// Manual operator rehearsal only; no accounting behavior is implemented here.
+#[cfg(test)]
+mod recovery_live;
+
 /// An entry as a caller writes it: no `config`, because the book stamps the
 /// version in force rather than letting the caller assert one.
 #[derive(Debug, Deserialize)]

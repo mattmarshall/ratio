@@ -1,6 +1,10 @@
 # Recovery readiness — October 22, 2026
 
-Related: #264. This is a readiness audit, not recovery acceptance.
+Related: #264. This preserves the historical readiness audit, not recovery acceptance.
+The later owner-approved [synthetic AWS drill](recovery-drill-2026-10-23.md)
+supersedes pending lab objectives and verifier assignment below. Recovery
+PRs #375/#376 and shell PRs #4/#5 have merged; dated initial states remain
+for provenance.
 
 ## Verified starting point
 

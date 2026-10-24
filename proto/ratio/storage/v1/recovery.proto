@@ -2,6 +2,9 @@ syntax = "proto3";
 
 package ratio.storage.v1;
 
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
 option java_multiple_files = true;
 option java_package = "build.marsh.ratio.storage.v1";
 option java_outer_classname = "RecoveryProto";
@@ -21,4 +24,60 @@ message RecoveryManifest {
   int32 format_version = 1;
   string source_prefix = 2;
   repeated RecoveryObject objects = 3;
+}
+
+// Synthetic app custody used by the approved recovery rehearsal. References
+// are deliberately nonsecret; this message never contains provider tokens.
+message RecoveryAppState {
+  string app_id = 1;
+  string book_id = 2;
+  string subject = 3;
+  string registration_id = 4;
+  string credential_reference = 5;
+  string retry_cursor = 6;
+  map<string, string> posting_correspondence = 7;
+  string google_sync_token = 8;
+  map<string, string> sheet_row_index = 9;
+  bool revoked = 10;
+  bool outbound_writes_disabled = 11;
+}
+
+// Measured rehearsal evidence, distinct from the immutable capture manifest.
+// A passing automated phase does not assert the named verifier accepted it.
+message RecoveryDrillEvidence {
+  string run_id = 1;
+  string kernel_revision = 2;
+  string operator = 3;
+  string verifier = 4;
+  string source_location = 5;
+  string backup_location = 6;
+  string restore_location = 7;
+  google.protobuf.Duration rpo_target = 8;
+  google.protobuf.Duration rto_target = 9;
+  int32 evidence_retention_days = 10;
+  repeated RecoveryDrillPhase phases = 11;
+  repeated RecoveryDrillBook books = 12;
+  repeated RecoveryObject external_inventory = 13;
+  bool verifier_accepted = 14;
+  repeated string limitations = 15;
+}
+
+// One measured phase; failures remain evidence rather than being discarded.
+message RecoveryDrillPhase {
+  string phase_id = 1;
+  google.protobuf.Timestamp started_time = 2;
+  google.protobuf.Duration elapsed = 3;
+  bool passed = 4;
+  string detail = 5;
+}
+
+// Figures and immutable citations reproduced for one synthetic book.
+message RecoveryDrillBook {
+  string book_id = 1;
+  int64 journal_height = 2;
+  string journal_digest = 3;
+  repeated string config_history = 4;
+  int64 expected_nav = 5;
+  int64 reproduced_nav = 6;
+  repeated RecoveryObject objects = 7;
 }

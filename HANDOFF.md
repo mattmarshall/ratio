@@ -1,5 +1,12 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
+October 23, 2026: the owner approved the [synthetic AWS recovery drill](docs/recovery-drill-2026-10-23.md)
+with Matt Marshall as verifier: RPO 0 at quiescence, RTO 60 minutes, seven-day
+lab evidence retention. Its manual fixture uses the production S3 adapter and
+existing figure decisions. The lab is isolated from production; original CSV
+bytes and synthetic Connect custody are included. Results and verifier
+acceptance remain pending. Related: #264 and #300.
+
 October 23, 2026 — Related: #382. Main's build/tests passed, but deploy
 `39891988194` failed twice pulling the public Lambda adapter with HTTP 429.
 The workflow now authenticates ECR Public separately from private ECR, and
