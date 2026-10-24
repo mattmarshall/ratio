@@ -5553,3 +5553,46 @@ retained, and conditional/no-hole assertions passed after correction.
 **backend height with bounded memory** is the #358 Built phrase. The live
 65k improvement and smaller-append tradeoff belong together on the roadmap;
 no universal latency or API Gateway cold-start claim is made.
+### October 1, 2026 — cross-backend conformance gate, issue #359 (branch-local)
+
+`//crates/ratio-project:backend_conformance_gate` groups the journal/plane
+replay test, store and deployed S3 adapter tests, checkpoint tests, and the
+S3 journal model. The new fixture writes three postings and two records on
+*each* of deliveries, entities, facts, actions, explanations, and closes to
+local JSONL, MemoryStore, and DirStore; it reopens them and compares every
+record and every journal-prefix digest with the NAV digest. Direct object-log
+checks refuse occupied claims and holes. The checkpoint telemetry test now
+uses the production formatter, whose fields omit book IDs, digests, journal
+bodies, and memos. A unique test-directory counter fixes a repeated parallel
+checkpoint test collision. The gate does not yet run the full fixture against
+live S3; provider credentials and a disposable bucket remain acceptance work.
+
+### Amendment, 2026-10-02 — every current ObjectStore enters the conformance gate
+
+Related: #359. The shared fixture now compares trial balances as well as every
+prefix digest and six side planes. The deployed S3 adapter runs it against a
+bounded in-process S3 endpoint, using the same conditional PUT, GET, and LIST
+calls as the provider client. Journal and each side plane refuse holes and
+occupied claims; `MemoryStore::unconditional()` fails for the overwritten
+claim it permits. A Bazel source inventory includes all crate packages and
+fails when a new `ObjectStore` implementation is added without extending the
+gate; a temporary unregistered implementation made the gate red. Live S3
+provider behavior and the customer recovery drill remain unproved.
+
+2026-10-23 #359 provider companion: preserve the cheap mandatory conformance
+gate and run its identical fixture against the deployed S3 adapter separately.
+Exact journal/prefix/side-plane/trial-balance equality, per-plane digest
+citations, and real conditional/no-hole refusals are required. Explicitly
+classify the new manual wrappers in the source registry; do not weaken the
+new-backend refusal. Live execution is not claimed before it passes.
+
+2026-10-23 #359 live conformance passed: the identical registered fixture
+matched actual S3 against local JSONL for every journal prefix, six side-plane
+record/digest sets, and trial balance. Real conditional and no-hole checks
+passed on seven sequence planes. The mandatory gate passed 7/7; a compilable
+new crate was refused both without inventory and without registration, then
+removed. Provider and emulated evidence stay distinct in the retained report.
+
+**cross-backend journal and plane conformance** is the #359 Built phrase.
+Its identical live S3 fixture and compiled new-crate refusal probe passed;
+the emulated endpoint remains a separate cheap gate, not provider evidence.

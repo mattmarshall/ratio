@@ -27,7 +27,7 @@ telemetry lines must match only hit/miss/reason and integer lengths. Protobuf
 records preserve source SHA, timings, assertion results, adapter-call counts,
 and limitations. Counts are not paginated HTTP-request counts. Serial prefix
 verification still reads journal bodies on a checkpoint hit; no one-GET claim
-is made. Provider results are pending execution.
+is made. Completed provider results follow below.
 
 ## Completed live checkpoint evidence (#357)
 
@@ -123,3 +123,61 @@ Both read-back-verified AES256/seven-day GOVERNANCE archives remain retained:
 These include seed, initial and corrected protobuf records and redacted logs.
 The S3 LIST/conditional-PUT model is unchanged; positive checks passed and the
 unconditional-write probe violated `NoWriteIsLost` for its named reason.
+## Registered fixture provider companion (#359)
+
+The mandatory cheap gate retains local JSONL, MemoryStore, DirStore, an
+emulated S3 endpoint, named conditional/no-hole probes, checkpoint telemetry
+privacy, and the ObjectStore source registry. Its manual provider companion
+executes the identical reusable fixture against real S3 with endpoint overrides
+refused. Exact journal bytes, all four prefixes (including empty), six side
+planes, and trial balance must match. Each side plane receives an explicit
+SHA-256 citation. Real occupied-claim and missing-slot checks run on all seven
+sequence planes. No emulated result is presented as live evidence.
+
+The registry explicitly classifies the manual counting and baseline-height
+wrappers as delegating test doubles. A new unclassified ObjectStore still
+fails the build. Completed provider and mutation results follow below.
+
+### Completed registered fixture provider evidence (#359)
+
+At source `9fc28b69c8973f96410c5fd5ac98309dac0a55b7`, the actual S3 run
+passed in 9.69 seconds: exact journal bytes, four journal prefixes including
+empty, six side-plane record sets, and trial balance matched the same local
+JSONL fixture used by the mandatory gate. Every prefix was also checked
+against `ratio_nav::prefix_digest`. Each side plane's SHA-256 is retained in
+the protobuf. Actual occupied-claim refusal, unchanged acknowledged bytes,
+ordered replay, and missing-slot refusal passed on all seven sequence planes.
+
+Independent raw S3 readback reproduced the canonical local JSONL bytes and
+preserved each prefix pin:
+
+| Prefix | SHA-256 |
+|---|---|
+| 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| 1 | `3b9ca02ec032f16793d7ebd80671cf4f0dce6be4a7aa50026daffcfa3b928f05` |
+| 2 | `157be2c623cdc738978cd13e7a39347bc4665d22f26b4e3be0950072bbb8528f` |
+| 3 | `923bede0abad250c1ea53a8b12f2fe8fa7fbc17abf77de476b535545bbe04502` |
+
+All seven mandatory gate targets passed. The initial registry run correctly
+refused four previously merged test doubles; they were explicitly classified,
+without weakening the new-backend refusal. A compilable temporary crate then
+proved both protections: omitting its inventory target refused analysis, and
+adding the inventory without conformance registration refused specifically for
+`UnregisteredStore`. The temporary crate was removed and the full gate passed
+again. Dynamic Bazel `subpackages()` inventory is retained; no additional
+build aspect is needed. The earlier smaller source mutation was also refused
+for its named unclassified-backend reason.
+
+AES256/seven-day GOVERNANCE archives, each uploaded and read back with matching
+SHA-256:
+
+- `evidence/provider-359-final.zip`:
+  `3d3399d2764997765b9ebf4fa1d0718a4b78c95fc09ef1a5e4344cba61b79b1e`.
+- `evidence/provider-359-prefixes.zip`:
+  `4518beafc2b9edabdd9a20d435075e19d3ba79e468be97d594a3cb61c5f660e5`.
+- `evidence/provider-359-new-crate.zip`:
+  `6aa5dabe64033ea1e79beec1376fa5ff9eea291ac55a468a30eef7792d846969`.
+
+Actual provider results remain distinct from the in-process S3 endpoint.
+Operational-evidence retention/selection is separately covered by accepted
+#264/#300 recovery; mixed live/local book routing remains #360.

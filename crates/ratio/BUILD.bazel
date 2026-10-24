@@ -13,6 +13,7 @@ rust_binary(
         "src/recovery_live.rs",
         "src/checkpoint_live.rs",
         "src/height_live.rs",
+        "src/provider_live.rs",
     ],
     edition = "2021",
     deps = [
@@ -52,10 +53,18 @@ rust_test(
     name = "ratio_test",
     crate = ":ratio",
     edition = "2021",
+    deps = ["//crates/ratio-project:backend_fixture"],
+)
+
+# Source inventory for the build-enforced ObjectStore conformance registry.
+filegroup(
+    name = "object_store_source_files",
+    srcs = glob(["src/**/*.rs"]),
 )
 
 rust_test(
     name = "recovery_live_test",
+    deps = ["//crates/ratio-project:backend_fixture"],
     crate = ":ratio",
     edition = "2021",
     tags = ["manual", "requires-network"],
@@ -78,6 +87,7 @@ sh_test(
 
 rust_test(
     name = "checkpoint_live_test",
+    deps = ["//crates/ratio-project:backend_fixture"],
     crate = ":ratio",
     edition = "2021",
     tags = ["manual", "requires-network"],
@@ -86,8 +96,18 @@ rust_test(
 
 rust_test(
     name = "height_live_test",
+    deps = ["//crates/ratio-project:backend_fixture"],
     crate = ":ratio",
     edition = "2021",
     tags = ["manual", "requires-network"],
     args = ["--ignored", "--exact", "height_live::height_and_append_cost_are_measured_on_live_s3"],
+)
+
+rust_test(
+    name = "provider_live_test",
+    crate = ":ratio",
+    edition = "2021",
+    deps = ["//crates/ratio-project:backend_fixture"],
+    tags = ["manual", "requires-network"],
+    args = ["--ignored", "--exact", "provider_live::the_registered_fixture_conforms_against_live_s3"],
 )
