@@ -157,13 +157,30 @@ fn two_books_remain_isolated_across_live_backends_and_cold_processes() -> Result
                     == Some(format!("# {id} proposal\n")),
                 "proposal identity"
             );
+            let audit = client(who)
+                .list_change_log_entries(&format!("funds/{id}"))?
+                .change_log_entries;
             ensure!(
-                client(who)
-                    .list_change_log_entries(&format!("funds/{id}"))?
-                    .change_log_entries
-                    .len()
-                    == 1,
-                "creation audit lost"
+                audit.len() == 2
+                    && audit
+                        .iter()
+                        .any(|row| row.action == "created" && row.actor == who)
+                    && audit
+                        .iter()
+                        .any(|row| row.action == "drafted" && row.subject == "review"),
+                "creation and proposal audit identity differs"
+            );
+            let name = client(who)
+                .list_nav_strikes(&format!(
+                    "funds/{id}/views/{}",
+                    ratio_rules::UNDECLARED_VIEW
+                ))?
+                .nav_strikes[0]
+                .name
+                .clone();
+            ensure!(
+                client(who).replay_nav_strike(&name)?.reproduced,
+                "console NAV replay binding"
             );
         }
         ensure!(

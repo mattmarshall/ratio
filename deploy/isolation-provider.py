@@ -9,6 +9,7 @@ import subprocess
 
 parser=argparse.ArgumentParser()
 parser.add_argument("phase",choices=["seed", "cold"])
+parser.add_argument("--attempt")
 args=parser.parse_args()
 repo=Path(__file__).resolve().parent.parent
 assert not subprocess.check_output(["git","status","--porcelain"],cwd=repo), "commit source before execution"
@@ -17,7 +18,7 @@ settings=dict(line.split("=",1) for line in Path("/private/tmp/ratio-approved-re
 run=settings["RATIO_DRILL_ID"]
 logs=Path("/private/tmp")/("ratio-provider-360-logs-"+run)
 logs.mkdir(mode=0o700,exist_ok=True)
-log=logs/(args.phase+".log")
+log=logs/((args.attempt or args.phase)+".log")
 assert not log.exists(), "preserve the prior phase attempt"
 aws=["aws","--profile","ratio","--region","us-east-1"]
 creds=json.loads(subprocess.check_output(aws+["configure","export-credentials","--format","process"],text=True))

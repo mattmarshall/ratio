@@ -1707,3 +1707,10 @@ that same handle. NAV list/get defaults also stay local. The manual provider
 harness separates seed and cold processes, with alpha on actual S3 and beta
 on a separate DirStore. Live results remain pending; no provider claim follows
 from the MemoryStore/DirStore test.
+
+The first live #360 seed passed. The first cold attempt's audit assertion
+incorrectly expected only the creation row; the API also exposes the retained
+proposal as a drafted row. Preserve that failed log. A further binding audit
+found Console NAV get/replay/impact still using the local convenience accessor;
+they now pass the selected backend. The corrected cold continuation exercises
+the Console replay endpoint, not just the lower-level NAV reader.

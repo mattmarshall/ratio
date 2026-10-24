@@ -4423,7 +4423,7 @@ impl Console {
         let (fund, view, id) =
             view_scoped_id(name, "navStrikes").context("bad name")?;
         let path = self.book_path(&fund)?;
-        let s = ratio_nav::get(&path, &view, &id)?;
+        let s = ratio_nav::get_with_store(&path, &view, &id, self.object_store_for(&fund)?)?;
         // Getting one strike qualifies it the same way listing them does — a
         // figure fetched on its own must not look sounder than the same figure
         // in a list.
@@ -4821,7 +4821,7 @@ impl Console {
         let (fund, view, id) =
             view_scoped_id(name, "navStrikes").context("bad name")?;
         let path = self.book_path(&fund)?;
-        let s = ratio_nav::get(&path, &view, &id)?;
+        let s = ratio_nav::get_with_store(&path, &view, &id, self.object_store_for(&fund)?)?;
         // ⛔ AND THE REPLAY RESOLVES THE VIEW'S TERMS FROM THE DIGEST EACH ENTRY
         // PINNED, which `NavFold::def_for` does — never from ACTIVE. A calendar
         // amended since would otherwise re-derive a different settlement date,
@@ -4864,7 +4864,7 @@ impl Console {
     ) -> Result<pb::ExplainNavStrikeResponse> {
         let (fund, view, id) = view_scoped_id(name, "navStrikes").context("bad name")?;
         let path = self.book_path(&fund)?;
-        let s = ratio_nav::get(&path, &view, &id)?;
+        let s = ratio_nav::get_with_store(&path, &view, &id, self.object_store_for(&fund)?)?;
         let cal = ratio_nav::closure::rate_for(&path);
 
         let b = self.open_file_book(&path)?;
