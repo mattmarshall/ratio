@@ -235,3 +235,21 @@ archive. Its first invocation stopped before credentials or any S3 operation:
 the AWS SSO token had expired and could not refresh. It has not yet executed;
 the owner was asked to renew `aws sso login --profile ratio`. Do not treat the
 passing CLI/MCP unavailable-backend checks as this HTTP-specific evidence.
+
+### Supplemental HTTP unavailable-backend result
+
+After the owner renewed AWS SSO, the prepared probe ran at source
+`bffc4242024a0535442e8fd69bd940c05945e324` and passed. The configured
+HTTP server refused unavailable durable publication before announcing a bound
+listener; the existing beta book's local bytes were unchanged. This completes
+the separate HTTP unavailable-backend check described above.
+
+Archive: backup `evidence/http-refusal-evidence.zip`, SHA-256
+`aae745273c0fe2e355f2d51e70d26abc78ffe753944e0f46781387fba1147ec0`.
+The upload was read back and matched. The protobuf phase records its exact
+source revision and result. [Build, tests and live Postgres passed on that
+source](https://github.com/mattmarshall/ratio/actions/runs/40047277416);
+[site](https://github.com/mattmarshall/ratio/actions/runs/40047277414) and
+[wording](https://github.com/mattmarshall/ratio/actions/runs/40047328637) also
+passed. Independent verifier acceptance remains pending; the prior expired
+session and all earlier failures remain documented rather than overwritten.
