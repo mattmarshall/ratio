@@ -583,3 +583,10 @@ height verification and larger-memory controls. Peak allocated linear memory,
 source/module pins, and shape are recorded; native RSS estimates are not
 substituted. The 1 GiB profile is explicit and does not claim a browser-wide
 or total-device-memory guarantee.
+
+The footprint supplement records macOS peak physical footprint independently
+of linear allocation. The exact-4-GiB diagnostic exposed a non-returning
+two-view cleanup; its failure is preserved and that profile is unsupported.
+The default 1 GiB module and page-below-address-limit diagnostic have verified
+success/refusal boundaries. The host must discard an instance after a trap or
+watchdog timeout rather than read a partial projection.

@@ -1,0 +1,11 @@
+kernel_revision: "68f44f17d2edb300f47df8789723bb93a6cfd94a"
+module_sha256: "24a289a796ce31b1c50ace4b27c641ac528bf7c0af1c090944f171a8dbdd5f91"
+runtime_version: "v26.8.2; V8 14.6.202.34-node.28"
+requested_height: 40966351
+view_count: 2
+completed_height: 40966351
+peak_linear_memory_bytes: 4294967296
+linear_memory_limit_bytes: 4294967296
+failure: "watchdog timeout: kernel call did not return figures"
+elapsed_milliseconds: 180004
+security_count: 10000

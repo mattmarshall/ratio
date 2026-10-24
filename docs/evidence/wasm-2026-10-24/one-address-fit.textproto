@@ -1,0 +1,11 @@
+kernel_revision: "07c3a8d27d9ee22655d8e8d4d13ec29979b919c4"
+module_sha256: "24a289a796ce31b1c50ace4b27c641ac528bf7c0af1c090944f171a8dbdd5f91"
+runtime_version: "v26.8.2; V8 14.6.202.34-node.28"
+requested_height: 81926356
+view_count: 1
+completed_height: 81926356
+peak_linear_memory_bytes: 4294574080
+linear_memory_limit_bytes: 4294967296
+returned_figures: true
+elapsed_milliseconds: 195105
+security_count: 10000

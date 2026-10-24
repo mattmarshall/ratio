@@ -12,6 +12,13 @@ Final #364 CI remains the merge gate. OPFS ownership/reload proof (#365) and
 the approved limited broker scope (#366) follow in order. Physical iOS
 execution and the separate kernel contribution-policy decision remain open.
 
+The wasm report also records actual peak physical footprint (981,079,368 /
+1,031,656,704 bytes for the one/two-view 1 GiB boundaries), separate from
+linear allocation and RSS. A page-below-4-GiB diagnostic fits 81,926,356 /
+40,966,350 entries, with the next entry refusing. The exact-4-GiB two-view
+diagnostic did not return after post-fold validation; its timed-out evidence
+is retained and that profile is unsupported. The default stays at 1 GiB.
+
 Deployment dependency authentication (#382, October 23): the workflow logs
 into ECR Public before pulling the Lambda adapter, separately from its private
 ECR push login. The versioned bootstrap adds the required two token actions.

@@ -1812,3 +1812,13 @@ target, no tonic/tokio/AWS runtime rlibs. Native storage/Console/projection,
 schema, and optimized wasm runtime checks passed locally. The paired iPhone
 still reports tunnel unavailable and no DDI services; no physical run is
 claimed. PR #387 remains the issue-specific review and final CI gate.
+
+The extended address-space probe found a real failure: at exactly 4 GiB,
+two-view cleanup did not return after the final validation callback. The first
+attempt was sampled/stopped; the bounded repeat recorded a 180,004 ms timeout.
+Its cause is not diagnosed. A page below that cap, successful and refusing
+adjacent heights were verified for both views. Keep the default at 1 GiB,
+discard trapped/timed-out instances, and never treat progress as a figure.
+The report now separates peak linear allocation from macOS peak physical
+footprint, not RSS, retaining original child measurements and raw counters.
+All 25 canonical records and four footprint child records are preserved.

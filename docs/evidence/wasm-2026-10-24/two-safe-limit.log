@@ -1,0 +1,51 @@
+completed 0 linear_memory_bytes 1245184
+completed 1000000 linear_memory_bytes 89325568
+completed 2000000 linear_memory_bytes 171245568
+completed 3000000 linear_memory_bytes 335085568
+completed 4000000 linear_memory_bytes 335085568
+completed 5000000 linear_memory_bytes 335085568
+completed 6000000 linear_memory_bytes 662896640
+completed 7000000 linear_memory_bytes 662896640
+completed 8000000 linear_memory_bytes 662896640
+completed 9000000 linear_memory_bytes 662896640
+completed 10000000 linear_memory_bytes 662896640
+completed 11000000 linear_memory_bytes 1318387712
+completed 12000000 linear_memory_bytes 1318387712
+completed 13000000 linear_memory_bytes 1318387712
+completed 14000000 linear_memory_bytes 1318387712
+completed 15000000 linear_memory_bytes 1318387712
+completed 16000000 linear_memory_bytes 1318387712
+completed 17000000 linear_memory_bytes 1318387712
+completed 18000000 linear_memory_bytes 1318387712
+completed 19000000 linear_memory_bytes 1318387712
+completed 20000000 linear_memory_bytes 1318387712
+completed 21000000 linear_memory_bytes 2629369856
+completed 22000000 linear_memory_bytes 2629369856
+completed 23000000 linear_memory_bytes 2629369856
+completed 24000000 linear_memory_bytes 2629369856
+completed 25000000 linear_memory_bytes 2629369856
+completed 26000000 linear_memory_bytes 2629369856
+completed 27000000 linear_memory_bytes 2629369856
+completed 28000000 linear_memory_bytes 2629369856
+completed 29000000 linear_memory_bytes 2629369856
+completed 30000000 linear_memory_bytes 2629369856
+completed 31000000 linear_memory_bytes 2629369856
+completed 32000000 linear_memory_bytes 2629369856
+completed 33000000 linear_memory_bytes 2629369856
+completed 34000000 linear_memory_bytes 2629369856
+completed 35000000 linear_memory_bytes 2629369856
+completed 36000000 linear_memory_bytes 2629369856
+completed 37000000 linear_memory_bytes 2629369856
+completed 38000000 linear_memory_bytes 2629369856
+completed 39000000 linear_memory_bytes 2629369856
+completed 40000000 linear_memory_bytes 2629369856
+{
+  requested: 150000000,
+  views: 2,
+  completed: 40966350,
+  peak: 4294639616,
+  limit: 4294901760,
+  returned: false,
+  failure: 'RuntimeError: unreachable',
+  elapsedMilliseconds: 134052
+}

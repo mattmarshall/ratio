@@ -105,7 +105,8 @@ rust_shared_library(
     deps = [":backend_fixture", ":ratio-project", "//crates/ratio-console", "//crates/ratio-store", "@crates//:serde_json", "@crates//:anyhow"],
 )
 
-# Measure the wasm32 address-space ceiling separately from the smaller profile.
+# Unsupported exact-4-GiB diagnostic: two-view cleanup did not return.
+# Only run with the capacity operator's watchdog; the default stays 1 GiB.
 rust_shared_library(
     name = "wasm_capacity_address_space",
     platform = "//:wasm32",

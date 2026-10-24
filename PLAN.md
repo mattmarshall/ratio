@@ -5759,3 +5759,11 @@ refusing heights, identifying allocation pressure rather than an accounting
 assertion. The [report and eight retained protobuf measurements](docs/wasm-capacity.md)
 name source revisions, module hashes, runtime, and shape. Required final CI is
 the merge gate; browser storage/application transport remains separate work.
+
+Extended verification measured the near-address-space boundary at 4 GiB minus
+one page: 81,926,356 / 40,966,350 entries for one/two views, with adjacent
+refusals. Exact 4 GiB produced a non-returning two-view cleanup; the failure
+and watchdog repeat are retained and that diagnostic profile is unsupported.
+The default remains 1 GiB. Peak physical footprint at its fitting boundaries
+was 981,079,368 / 1,031,656,704 bytes, measured by the macOS peak-footprint
+counter separately from linear allocation. RSS is not substituted.
