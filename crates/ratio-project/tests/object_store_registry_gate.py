@@ -7,6 +7,7 @@ import sys
 
 
 EXPECTED = {
+    ("crates/ratio-store/src/opfs.rs", "OpfsStore"),
     # Read-only synthetic journal for wasm capacity measurement; metadata
     # delegates to MemoryStore, with no production write adapter.
     ("crates/ratio-project/tests/wasm_conformance.rs", "GeneratedJournal"),
@@ -45,6 +46,8 @@ def main() -> None:
     native = ""
     workflow = ""
     native_build = ""
+    project_build = ""
+    opfs = ""
     for raw in sys.argv[1:]:
         path = pathlib.Path(raw)
         normalized = path.as_posix()
@@ -59,6 +62,10 @@ def main() -> None:
             workflow = source
         if normalized.endswith("crates/ratio-postgres-store/BUILD.bazel"):
             native_build = source
+        if normalized.endswith("crates/ratio-project/BUILD.bazel"):
+            project_build = source
+        if normalized.endswith("crates/ratio-project/tests/opfs_conformance.rs"):
+            opfs = source
         if "crates/" not in normalized:
             continue
         relative = "crates/" + normalized.split("crates/", 1)[1]
@@ -71,6 +78,9 @@ def main() -> None:
             f"ObjectStore implementations changed: missing={missing}, extra={extra}. "
             "Extend backend_conformance_gate with a fixture for each new backend."
         )
+    if ("backend_fixture::exercise_with" not in opfs or "OpfsStore::bind" not in opfs
+        or '"//browser/opfs:adapter_simulation_test"' not in project_build):
+        raise SystemExit("OPFS conformance must run the shared fixture through the actual Rust adapter in the mandatory gate")
     if ("backend_fixture::exercise" not in native
         or "//crates/ratio-postgres-store:backend_conformance_live_gate" not in workflow
         or '":pg_conformance_test"' not in native_build

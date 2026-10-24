@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 pub type ResultShape = (Vec<String>, Vec<Vec<String>>, Vec<String>, (i64, i64));
 
-fn entry(id: &str, config: &ratio_store::Digest) -> JournalEntry {
+pub fn entry(id: &str, config: &ratio_store::Digest) -> JournalEntry {
     JournalEntry {
         id: id.into(), memo: "a cited posting".into(), config: config.clone(),
         postings: vec![
@@ -51,12 +51,25 @@ pub fn exercise_with(mut open: impl FnMut() -> FileBook) -> ResultShape {
     }
     drop(book);
     let reopened = open();
-    let journal = reopened.entries().unwrap().iter()
+    let result = inspect(&reopened);
+    assert_eq!(result.2, digests);
+    result
+}
+
+/// Inspect a retained fixture without appending it again after a cold reload.
+pub fn inspect(book: &FileBook) -> ResultShape {
+    let entries = book.entries().unwrap();
+    let journal = entries.iter()
         .map(|e| serde_json::to_string(e).unwrap()).collect();
-    let planes = PLANES.iter().map(|p| reopened.records::<serde_json::Value>(*p).unwrap()
+    let planes = PLANES.iter().map(|p| book.records::<serde_json::Value>(*p).unwrap()
         .iter().map(|v| serde_json::to_string(v).unwrap()).collect()).collect();
-    assert_eq!(prefix_digest_book(&reopened, 3).unwrap(), digests[3]);
-    let balance = reopened.trial_balance().unwrap();
+    let digests = (0..=entries.len()).map(|n| {
+        let digest = prefix_digest(&entries[..n]).unwrap();
+        assert_eq!(digest, prefix_digest_book(book, n).unwrap());
+        assert_eq!(digest, ratio_nav::prefix_digest(&entries[..n]).unwrap());
+        digest
+    }).collect();
+    let balance = book.trial_balance().unwrap();
     assert_eq!(balance.debits, balance.credits);
     (journal, planes, digests, (balance.debits, balance.credits))
 }

@@ -357,3 +357,19 @@ metadata refuses. This adds no backup, retention, identity, credential-custody,
 or browser-storage guarantee. Those remain properties of the selected backend
 and its verified operational procedure. Native cached and no-store layouts
 retain their existing recovery behavior.
+
+## OPFS recovery boundary in verification (#365)
+
+The new adapter's authoritative material is the complete namespace object-frame
+file in OPFS `ratio-object-log-v1/`, including every journal, configuration,
+bootstrap/control, and evidence object placed on that binding. Its key index
+is reconstructed. Only a trailing incomplete unacknowledged frame can be
+discarded after exclusive ownership; complete corruption or duplicate frames
+refuse. A trap, ambiguous I/O, or timeout cannot serve a partial figure.
+
+The Node handle simulation verifies that boundary; actual browser reload proof
+is still pending. OPFS eviction, OS/device loss, off-device export/restore,
+original-delivery byte custody, and Connect credentials need their own complete
+inventory and backup procedure before a browser customer recovery claim.
+The accepted #264/#300 evidence remains its documented S3 representative drill;
+it does not establish an OPFS RPO/RTO or retention policy.

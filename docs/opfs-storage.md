@@ -1,7 +1,8 @@
 # OPFS ownership protocol — proof gate, October 24, 2026
 
-Related: #365. The adapter is not implemented yet. This records the safety
-argument before code; browser execution and conformance remain required.
+Related: #365. The proof was committed as `2e520dc` before adapter source.
+The implementation below has simulation evidence; actual browser execution
+and final conformance remain required.
 
 `OPFSJournal.tla` separates ownership, preparing an append position, writing,
 flushing/acknowledging, and crash/reload. An acknowledged write remains in the
@@ -18,7 +19,7 @@ was removed before committing the model. Tail recovery now occurs only after
 the last owner is gone. [Logs](evidence/opfs-2026-10-24/) retain the corrected
 trace and the full **49-probe** executable sweep, all red for their named reason.
 
-## Planned realization
+## Implementation and pending browser realization
 
 One dedicated worker must own each explicit backend namespace. It will hold
 a [Web Lock](https://www.w3.org/TR/web-locks/) and an exclusive
@@ -27,6 +28,31 @@ Other tabs submit work to the owner; they do not become independent writers.
 There is no heartbeat-based lease theft or `steal` option. Missing support,
 ambiguous I/O, or unavailable ownership must refuse. Actual second-tab and
 reload behavior must be tested rather than inferred from API names.
+
+The Rust `OpfsStore` passes an explicit binding through every wasm import;
+zero, missing, and poisoned bindings refuse. Immutable canonical protobuf
+frames protect key/body/version by digest. The synchronous host appends a
+length/framed object/complemented length, flushes, then updates its index and
+acknowledges. Complete corruption and duplicate keys refuse. Only an incomplete
+trailing frame can be discarded after ownership, and ambiguous writes poison
+the owner until recovery. A cached per-prefix integer height avoids journal
+body reads and key-list allocation; `u64::MAX` remains exact across the ABI.
+
+The required backend gate now includes `//browser/opfs:adapter_simulation_test`.
+It runs the actual Rust wasm adapter over an fs-backed synchronous-handle shim:
+all native fixture bytes/digests/planes/figures, binary objects, UTF-8 ordering,
+u64 heights, conditional claims, holes, distinct bindings, cold reopening,
+partial-write refusal/recovery, complete corruption, and duplicate frames.
+This is explicitly **simulation**, not live OPFS ownership evidence.
+The shared fixture's closes plane contains opaque records, so it cannot accept
+a later dated posting; the write/crash drill uses a separate valid book instead
+of weakening the close guard or changing the shared fixture.
+
+`bazel run //browser/opfs:verification_server` serves a clean-revision,
+loopback-only synthetic lab. The page/worker use protobuf correlation messages
+and never turn a correlation ID into an exactly-once claim. The namespace is
+preserved in the URL across reload. Actual second-tab and mid-append reload
+steps are still pending; do not close #365 from simulation alone.
 
 Because OPFS name/handle lookup is asynchronous, the proposed synchronous Rust
 adapter will address opaque protobuf object frames in one append-only file per

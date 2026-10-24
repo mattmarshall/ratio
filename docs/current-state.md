@@ -20,10 +20,12 @@ linear allocation and RSS. A page-below-4-GiB diagnostic fits 81,926,356 /
 diagnostic did not return after post-fold validation; its timed-out evidence
 is retained and that profile is unsupported. The default stays at 1 GiB.
 
-#365 is at its proof gate: 91 positive model states, a named lost-write
+#365 passed its proof gate: 91 positive model states, a named lost-write
 counterexample without exclusion, and all 49 executable probes verified.
-The [planned protocol](opfs-storage.md) precedes adapter code; actual browser
-ownership and cross-backend conformance remain unproved.
+The [protocol](opfs-storage.md) preceded adapter code. The explicit-binding
+Rust adapter now compiles and passes the persistent-handle simulation and
+shared native/wasm fixture. Actual browser OPFS ownership, second-tab/reload
+behavior, and final conformance remain unproved.
 
 Deployment dependency authentication (#382, October 23): the workflow logs
 into ECR Public before pulling the Lambda adapter, separately from its private

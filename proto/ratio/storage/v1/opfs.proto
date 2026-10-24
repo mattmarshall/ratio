@@ -1,0 +1,56 @@
+syntax = "proto3";
+package ratio.storage.v1;
+option java_multiple_files = true;
+option java_package = "build.marsh.ratio.storage.v1";
+option java_outer_classname = "OpfsProto";
+
+// One immutable object. The digest covers canonical key/body/version encoding
+// with digest empty, so an index cannot silently move bytes to another key.
+message OpfsObject {
+  string key = 1;
+  bytes body = 2;
+  string digest = 3;
+  int32 format_version = 4;
+}
+
+// A sorted, unique response from one explicit backend binding.
+message OpfsKeys {
+  repeated string keys = 1;
+}
+
+// Local verification transport, not a production Console authorization API.
+message OpfsProbeRequest {
+  string correlation_id = 1;
+  OpfsProbeOperation operation = 2;
+  string namespace = 3;
+  int32 binding = 4;
+}
+
+// The worker alone reports ownership; kernel figures remain opaque payloads.
+message OpfsProbeReply {
+  string correlation_id = 1;
+  bool passed = 2;
+  OpfsProbeRole role = 3;
+  bytes fixture_json = 4;
+  string detail = 5;
+  string owner_id = 6;
+  int32 held_lock_count = 7;
+  bool write_acknowledged = 8;
+}
+
+enum OpfsProbeOperation {
+  OPFS_PROBE_OPERATION_UNSPECIFIED = 0;
+  OPFS_PROBE_OPERATION_START = 1;
+  OPFS_PROBE_OPERATION_SEED = 2;
+  OPFS_PROBE_OPERATION_REPLAY = 3;
+  OPFS_PROBE_OPERATION_APPEND = 4;
+  OPFS_PROBE_OPERATION_STATUS = 5;
+  OPFS_PROBE_OPERATION_INTERRUPT = 6;
+}
+
+enum OpfsProbeRole {
+  OPFS_PROBE_ROLE_UNSPECIFIED = 0;
+  OPFS_PROBE_ROLE_OWNER = 1;
+  OPFS_PROBE_ROLE_CLIENT = 2;
+  OPFS_PROBE_ROLE_UNAVAILABLE = 3;
+}

@@ -1833,3 +1833,10 @@ before proof commit; the final negative trace is the actual same-position
 overwrite race. No adapter code has been written at this gate. Read the
 [protocol and pending evidence](docs/opfs-storage.md). Explicit host backend
 handles must preserve per-book routing; do not introduce a wasm global store.
+
+The adapter now compiles with explicit handles and immutable protobuf frames.
+The fs-backed Node handle simulation is separate from browser evidence. A first
+append test correctly refused the shared fixture's opaque close records; the
+write drill now has its own valid book, leaving the common fixture unchanged.
+The loopback verification server requires a clean revision. Live OPFS second-tab
+and reload proof remain before #365 completion.
