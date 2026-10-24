@@ -125,3 +125,11 @@ an ordinary I/O refusal. VM traps now propagate so the owner discards the
 instance. A real nested wasm-trap regression verifies propagation, no frame
 write, and intact replay in a fresh instance; this added fault test is part
 of the simulation gate, not a claim of browser trap injection.
+
+After the trap guard, clean revision `1a8bbf7d61deb1468f407532f24bb4e9f8f2e0e1`
+reopened the retained actual-browser namespace after all lab tabs had closed.
+Replay retained the full fixture and 14/14 drill state; a second tab again
+remained a client with one held lock. Three supplemental raw receipts and a
+screenshot preserve this final-source check. Module SHA-256:
+`d2761063bad4410be4944183a4a10a97a0e0e71c144088535a998e4726316abf`.
+The server and tabs closed again after preservation.
