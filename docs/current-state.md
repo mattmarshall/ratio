@@ -29,7 +29,7 @@ selected private, all-rights-reserved shell source with no outside contributions
 that record merged in shell PR #6. Kernel contribution-policy scope and its
 licensing record remain under iOS #3. Distribution remains a separate gate.
 
-Updated October 23, 2026. This is the current implementation summary. Update
+Updated October 24, 2026. This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
 [HANDOFF](../HANDOFF.md) and [PLAN's dated amendments](../PLAN.md).
 The [GitHub project](https://github.com/users/mattmarshall/projects/1) and
@@ -170,7 +170,8 @@ messages also pass the [issue-completion check](issue-completion.md).
   refuses. Published bootstrap/control and local no-store shape are preserved.
   Recovered metadata creates no identity/kind or membership grants. State proof,
   48 named failure probes, Console/storage/recovery, and complete backend/native
-  checks passed locally. Live S3 metadata proof and final CI remain.
+  checks passed locally. Actual S3 seed (11.0s) and separate-process cold
+  recovery/cache-conflict proof (6.6s) passed; final PR CI remains.
 
 ## Scope decisions that remain in force
 

@@ -1782,3 +1782,11 @@ fast path. The Console helper goes through the existing authorized door.
 Configured recovery now restores legacy chart/configuration/history without
 creating a BookKind, organization, or membership grant. Published cache conflict
 refusal remains unchanged. Live S3 evidence and final CI remain.
+
+October 24: #363 live S3 seed/cold/cache-conflict proof passed from e2652dd.
+Read the provider report for exact measurements and the evidence-only backup
+hash. An optional raw-object archive was rejected by automatic approval review;
+it did not run. Sanitized measurement/proof evidence was retained instead.
+The GitHub project is available in the signed-in in-app browser: #357–#362
+already show Done, and #363 was updated from Blocked to In progress. A CLI
+project-token refresh is no longer needed for these UI updates.

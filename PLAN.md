@@ -5730,3 +5730,10 @@ prepares metadata before its marker; an unchanged marker retains its one-GET
 data-plane fast path. Historical markers can import unpublished metadata on
 first attach, before figures are served. Live S3 metadata evidence and final
 CI remain before completion.
+
+October 24 verification: the actual S3 metadata seed passed in 11,013 ms and
+a separate cold process recovered exact metadata, journal digest, and 16,000
+minor-unit trial balance in 6,630 ms. A conflicting cache refused unchanged,
+was explicitly quarantined, and fresh-cache recovery succeeded. Evidence-only
+protobuf/log/proof archive readback matched under seven-day GOVERNANCE retention.
+No raw-object backup copy is claimed. Final PR CI remains the merge gate.

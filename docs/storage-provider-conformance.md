@@ -262,3 +262,40 @@ Retained native evidence: `evidence/provider-362-final.zip`, SHA-256
 Readback matched, with AES-256 encryption, versioning, and seven-day GOVERNANCE
 retention. It includes seed/cold protobuf records, all three process logs,
 final native conformance output, and the 45-probe named-failure sweep.
+
+## Unpublished metadata provider proof (#363, October 23–24)
+
+Proof commit `a1ec5bb` precedes implementation source
+`e2652dd644302730b59cabcb746d3b2480a28eef`. The positive state model checked
+246 states; the executable sweep ran 48 probes, all red for named invariants.
+The small actual-S3 namespace is `conformance-lab/20261023-f2fdf6e8/363/`.
+
+Seed completed in 11,013 ms. It retained a chart, first configuration, an
+unpromoted draft, a reviewed second configuration, promotion history, and two
+cited postings, then removed the serving cache. A separate cold process
+completed in 6,630 ms: exact chart/config/history/draft bytes recovered; journal
+digest reproduced; trial-balance debits and credits both equaled 16,000 minor
+units. No book identity/kind or membership grant was invented. A conflicting
+ACTIVE cache refused unchanged; it was explicitly quarantined, and a fresh
+cache recovered current durable state. This is a two-entry synthetic metadata
+proof, not a production latency or customer recovery guarantee.
+
+The complete backend/native/API/MCP/CLI gate passed 12 targets locally; Console,
+local-layout, recovery, stale-snapshot, corrupt/missing metadata, schema and
+cache-conflict tests also passed. Initial regression tests caught a raw Console
+metadata open outside the authorized door and a seed-publication fast-path
+regression; both were fixed. Seed tests now distinguish metadata from seeded
+data-plane scans while preserving no serving seed PUTs and unchanged-marker
+fast paths. The former legacy metadata-loss characterization now checks recovery
+without invented identity/grants. Native namespaces use separate caches with
+identical book keys, preserving the wrong-backend fence.
+
+Evidence-only archive `evidence/provider-363-final.zip` has SHA-256
+`36ccc0ae712d097f0f60b08c6738f9729026b1a406d79be8df68d4d277bbb833`.
+Readback matched, with AES-256 encryption, versioning, and seven-day GOVERNANCE
+retention. It contains measurement protobufs, sanitized live logs, and the
+48-probe proof sweep. Automatic approval review rejected an optional raw-object
+copy for its financial-data/destination authorization concern; that operation
+did not run. The safer archive excludes raw journal/configuration/metadata
+objects; those remain in the isolated live lab namespace. This limitation does
+not alter the earlier accepted #264/#300 backup exercise.
