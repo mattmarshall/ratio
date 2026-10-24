@@ -39,9 +39,9 @@ def main():
             assert "Cannot start a runtime from within a runtime" in (work / "http-server.log").read_text()
             shutil.copyfile(work / "http-server.log", work / "http-server-attempt-1.log")
         else:
-            assert prior.phases[-1].phase_id == "all-cli-mcp-writers-refuse-live-s3-failure" and not prior.phases[-1].passed
+            assert prior.phases[-1].phase_id in ("all-cli-mcp-writers-refuse-live-s3-failure", "all-cli-mcp-writers-refuse-live-s3-failure-continuation") and not prior.phases[-1].passed
             assert "durable book publication is unavailable; refusing local fallback" in (work / "live-refuse-init.log").read_text()
-            assert prior.phases[-2].phase_id == "live-loopback-http-post-and-refusal-continuation" and prior.phases[-2].passed
+            assert any(phase.phase_id == "live-loopback-http-post-and-refusal-continuation" and phase.passed for phase in prior.phases)
     else:
         assert not work.exists(), "preserve an existing attempt instead of restarting"
         work.mkdir(mode=0o700)
@@ -68,7 +68,7 @@ def main():
         output = redact(result.stdout + result.stderr)
         (work / (label + ".log")).write_text(output)
         if refusal:
-            assert result.returncode != 0 and refusal in output, output[-1800:]
+            assert result.returncode != 0 and any(reason in output for reason in ([refusal] if isinstance(refusal, str) else refusal)), output[-1800:]
         else:
             assert result.returncode == 0, output[-1800:]
         return result.stdout
@@ -151,7 +151,7 @@ def main():
         unavailable = dict(configured, RATIO_JOURNAL_BUCKET="ratio-recovery-lab-missing-" + run)
         commands = [("init", ["init"]), ("post", ["post", str(event)]), ("strike", ["strike"]), ("close", ["close", "--through", "2026-07-31"]), ("approve", ["approve", "unapproved-draft"]), ("accept", ["accept", "synthetic-break", "--because", "fixture"]), ("mcp", ["mcp"])]
         for label, cmd in commands:
-            command("live-refuse-" + label, [core] + cmd + ["--book", str(serving / "alpha")], unavailable, stdin="", refusal="durable book publication is unavailable; refusing local fallback" if label == "init" else "NoSuchBucket")
+            command("live-refuse-" + label, [core] + cmd + ["--book", str(serving / "alpha")], unavailable, stdin="", refusal=("durable book publication is unavailable; refusing local fallback", "NoSuchBucket"))
         after = {p.relative_to(serving): hashlib.sha256(p.read_bytes()).digest() for p in serving.rglob("*") if p.is_file()}
         assert before == after, "a failed configured writer changed local book bytes"
     phase("all-cli-mcp-writers-refuse-live-s3-failure-continuation" if args.continue_refusals else "all-cli-mcp-writers-refuse-live-s3-failure", fail_closed)

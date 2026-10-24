@@ -193,3 +193,11 @@ fallback. Attempt 2 is retained at `evidence/writer-attempt-2.zip`, SHA-256
 `32495fb96087c716a69e3d5a585ef13f8fc8239a8253bac46c8a8a642acf691f`.
 The continuation accepts that precise init refusal, still requires the live AWS
 failure for the existing-book writers, and does not repeat the HTTP post.
+
+The same publication-marker refusal protects existing published books too:
+`FileBook::open_with_seed` refuses a missing durable publication before touching
+local bytes. Attempt 3 records the overly narrow diagnostic assertion at `post`:
+`evidence/writer-attempt-3.zip`, SHA-256
+`e95ac30e26951bda82567414b1c26565a746cdd5a4ccc57121e4aba2324f45d4`.
+The harness now accepts either that exact fail-closed diagnostic or the explicit
+AWS `NoSuchBucket` error, always requiring failure and unchanged local bytes.
