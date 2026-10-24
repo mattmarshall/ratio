@@ -5476,3 +5476,10 @@ local or S3 namespace explicitly and refuses occupied destinations; its
 directory test deletes the source before restore and corrupts a backup object.
 This makes the capture primitive runnable but does not establish a customer
 backup, retention policy, or signed recovery acceptance.
+
+2026-10-23 operational proof amendment: the approved synthetic recovery restored
+33 objects and both pinned figures, with measured RTO 275.748 seconds. A separate
+configured-writer run exposed a real HTTP/S3 nested-runtime startup panic after
+CLI and MCP writes succeeded. The runtime boundary fix changes no amount or
+journal admission rule. Retained failure evidence and pending continuation are
+recorded in `docs/recovery-drill-2026-10-23.md`; #264/#300 remain open.

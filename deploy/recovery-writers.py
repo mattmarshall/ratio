@@ -18,6 +18,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-env", required=True)
     parser.add_argument("--proto-dir", required=True)
+    parser.add_argument("--continue-http", action="store_true", help="Resume only the preserved nested-runtime HTTP failure; never repeat successful writes")
     args = parser.parse_args()
     sys.path.insert(0, args.proto_dir)
     from ratio.storage.v1 import recovery_pb2 as pb, evidence_pb2 as stored
@@ -27,8 +28,15 @@ def main():
     assert lab.startswith("ratio-recovery-lab-") and backup.startswith("ratio-recovery-backup-")
     parent = Path("/private/tmp") / ("ratio-approved-recovery-" + run)
     work = parent / "writer-probes"
-    assert not work.exists(), "preserve an existing attempt instead of restarting"
-    work.mkdir(mode=0o700)
+    if args.continue_http:
+        assert work.is_dir()
+        prior = pb.RecoveryDrillEvidence.FromString((work / "writer-evidence.pb").read_bytes())
+        assert prior.phases[-1].phase_id == "live-loopback-http-post-and-refusal" and not prior.phases[-1].passed
+        assert "Cannot start a runtime from within a runtime" in (work / "http-server.log").read_text()
+        shutil.copyfile(work / "http-server.log", work / "http-server-attempt-1.log")
+    else:
+        assert not work.exists(), "preserve an existing attempt instead of restarting"
+        work.mkdir(mode=0o700)
     repo = Path(__file__).resolve().parent.parent
     assert not subprocess.check_output(["git", "status", "--porcelain"], cwd=repo, text=True)
     core = str(repo / "bazel-bin/crates/ratio/ratio")
@@ -39,7 +47,7 @@ def main():
     prefix = f"recovery-lab/{run}/writers/"
     serving = work / "serving"
     configured = dict(env, RATIO_JOURNAL_BUCKET=lab, RATIO_JOURNAL_PREFIX=prefix)
-    record = pb.RecoveryDrillEvidence.FromString((parent / "continuation-evidence.pb").read_bytes())
+    record = prior if args.continue_http else pb.RecoveryDrillEvidence.FromString((parent / "continuation-evidence.pb").read_bytes())
     record.limitations.append("Supplemental writer probes use a distinct lab snapshot copy and loopback HTTP; they do not claim production gateway JWT verification.")
 
     def redact(text):
@@ -88,16 +96,20 @@ def main():
     def objects():
         return api("writer-object-list", "s3api", "list-objects-v2", "--bucket", lab, "--prefix", prefix).get("Contents", [])
 
-    assert not objects(), "writer probe destination must start empty"
-    restore = dict(env, RATIO_RECOVERY_BACKUP_BUCKET=backup, RATIO_RECOVERY_BACKUP_PREFIX="snapshot/", RATIO_RECOVERY_DESTINATION_BUCKET=lab, RATIO_RECOVERY_DESTINATION_PREFIX=prefix)
-    phase("writer-snapshot-copy", lambda: command("restore-writer-copy", [core, "recovery", "restore"], restore))
-    event = work / "cli-entry.json"
-    event.write_text(json.dumps([{"id": "live-cli-post", "postings": [{"dim": 2, "amount": 2500}, {"dim": 20, "amount": -2500}], "trade_date": "2026-07-02"}]))
-    phase("live-cli-post", lambda: command("cli-post", [core, "post", event, "--book", serving / "alpha"], configured))
-    phase("live-cli-strike", lambda: command("cli-strike", [core, "strike", "--as-of", "2026-07-03", "--book", serving / "alpha"], configured))
-    phase("live-stdio-mcp-post", lambda: mcp("mcp-post", "beta", "post_events", {"events": [{"rule": "household_income", "id": "live-mcp-post", "amount": 1000}]}))
-    proposal = '[[rule]]\nid="recovery_draft"\nkind="trade"\n[[rule.posting]]\naccount=1\nweight=1\n[[rule.posting]]\naccount=20\nweight=-1\n'
-    phase("live-stdio-mcp-draft", lambda: mcp("mcp-draft", "beta", "propose_rule", {"toml": proposal}))
+    if not args.continue_http:
+        assert not objects(), "writer probe destination must start empty"
+        restore = dict(env, RATIO_RECOVERY_BACKUP_BUCKET=backup, RATIO_RECOVERY_BACKUP_PREFIX="snapshot/", RATIO_RECOVERY_DESTINATION_BUCKET=lab, RATIO_RECOVERY_DESTINATION_PREFIX=prefix)
+        phase("writer-snapshot-copy", lambda: command("restore-writer-copy", [core, "recovery", "restore"], restore))
+        event = work / "cli-entry.json"
+        event.write_text(json.dumps([{"id": "live-cli-post", "postings": [{"dim": 2, "amount": 2500}, {"dim": 20, "amount": -2500}], "trade_date": "2026-07-02"}]))
+        phase("live-cli-post", lambda: command("cli-post", [core, "post", event, "--book", serving / "alpha"], configured))
+        phase("live-cli-strike", lambda: command("cli-strike", [core, "strike", "--as-of", "2026-07-03", "--book", serving / "alpha"], configured))
+        phase("live-stdio-mcp-post", lambda: mcp("mcp-post", "beta", "post_events", {"events": [{"rule": "household_income", "id": "live-mcp-post", "amount": 1000}]}))
+        proposal = '[[rule]]\nid="recovery_draft"\nkind="trade"\n[[rule.posting]]\naccount=1\nweight=1\n[[rule.posting]]\naccount=20\nweight=-1\n'
+        phase("live-stdio-mcp-draft", lambda: mcp("mcp-draft", "beta", "propose_rule", {"toml": proposal}))
+
+    else:
+        event = work / "cli-entry.json"
 
     def http_write():
         server = subprocess.Popen([core, "server", "--addr", "127.0.0.1:0", "--book", str(serving / "beta")], cwd=repo, env=configured, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -123,7 +135,7 @@ def main():
             server.terminate()
             out, err = server.communicate(timeout=30)
             (work / "http-server.log").write_text(redact(line + out + err))
-    phase("live-loopback-http-post-and-refusal", http_write)
+    phase("live-loopback-http-post-and-refusal-continuation" if args.continue_http else "live-loopback-http-post-and-refusal", http_write)
 
     def fail_closed():
         before = {p.relative_to(serving): hashlib.sha256(p.read_bytes()).digest() for p in serving.rglob("*") if p.is_file()}
@@ -157,15 +169,15 @@ def main():
     assert sum(obj["Key"].startswith(prefix + "beta/proposals/") for obj in all_objects) == 1
     record.phases.add(phase_id="writer-cold-s3-readback", passed=True, detail="All three protocols' exact journal IDs survived root loss; CLI strike NAV 62500 at prefix 3 and the unapproved MCP draft survived in S3.")
     (work / "writer-evidence.pb").write_bytes(record.SerializeToString(deterministic=True))
-    archive = parent / "writer-probes.zip"
+    archive = parent / ("writer-probes-continuation.zip" if args.continue_http else "writer-probes.zip")
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
         for path in sorted(work.iterdir()):
             if path.is_file():
                 bundle.write(path, path.name)
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-    api("preserve-writer-evidence", "s3api", "put-object", "--bucket", backup, "--key", "evidence/writer-probes.zip", "--body", str(archive), "--if-none-match", "*")
+    api("preserve-writer-evidence", "s3api", "put-object", "--bucket", backup, "--key", "evidence/" + archive.name, "--body", str(archive), "--if-none-match", "*")
     readback = archive.with_suffix(".readback.zip")
-    api("writer-evidence-readback", "s3api", "get-object", "--bucket", backup, "--key", "evidence/writer-probes.zip", str(readback))
+    api("writer-evidence-readback", "s3api", "get-object", "--bucket", backup, "--key", "evidence/" + archive.name, str(readback))
     assert hashlib.sha256(readback.read_bytes()).hexdigest() == digest
     print(f"LIVE_WRITER_PROBES passed evidence_sha256={digest} verifier_acceptance=pending", flush=True)
 

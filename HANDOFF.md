@@ -1622,3 +1622,9 @@ and membership after restore.
 source, backup, and destination namespaces. The directory command test removes
 the source before restore and refuses a changed backup object. No customer S3
 run, schedule, retention, or signed operator verification has occurred.
+
+2026-10-23 recovery writer probe: live CLI/MCP writes survived in the isolated
+snapshot copy, but HTTP startup exposed S3's nested-Tokio-runtime panic. The
+recovery proof slice preserves that failure and fixes the synchronous adapter's
+runtime boundary; see `docs/recovery-drill-2026-10-23.md`. Do not call #300
+complete before the live continuation and independent verifier acceptance.

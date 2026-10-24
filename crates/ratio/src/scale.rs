@@ -333,6 +333,69 @@ fn aws(what: &str, e: impl std::error::Error + Send + Sync + 'static) -> anyhow:
     anyhow::anyhow!("{what}: {}", aws_sdk_s3::error::DisplayErrorContext(&e))
 }
 
+/// The synchronous storage interface is also called by async HTTP handlers.
+/// Entering its runtime directly there panics before a book can be opened.
+/// Keep one runtime per adapter; leave the caller's runtime before driving it.
+struct BlockingRuntime(Option<tokio::runtime::Runtime>);
+
+impl BlockingRuntime {
+    fn new() -> Result<Self> {
+        Ok(Self(Some(tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .context("starting the async runtime")?)))
+    }
+
+    fn block_on<F>(&self, future: F) -> F::Output
+    where
+        F: std::future::Future + Send,
+        F::Output: Send,
+    {
+        let runtime = self.0.as_ref().expect("live storage runtime");
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+                tokio::task::block_in_place(|| runtime.block_on(future))
+            }
+            Ok(_) => std::thread::scope(|scope| {
+                scope.spawn(|| runtime.block_on(future)).join().unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            }),
+            Err(_) => runtime.block_on(future),
+        }
+    }
+}
+
+impl Drop for BlockingRuntime {
+    fn drop(&mut self) {
+        // Runtime::drop blocks and itself panics inside an async handler.
+        if let Some(runtime) = self.0.take() {
+            runtime.shutdown_background();
+        }
+    }
+}
+
+#[cfg(test)]
+mod storage_runtime_tests {
+    use super::BlockingRuntime;
+
+    fn reads_and_drops() {
+        let runtime = BlockingRuntime::new().unwrap();
+        assert_eq!(runtime.block_on(async {
+            tokio::task::yield_now().await;
+            42
+        }), 42);
+    }
+
+    #[test]
+    fn synchronous_storage_can_run_and_drop_outside_tokio() { reads_and_drops(); }
+
+    #[tokio::test]
+    async fn synchronous_storage_can_run_and_drop_inside_current_thread_tokio() { reads_and_drops(); }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn synchronous_storage_can_run_and_drop_inside_http_tokio() { reads_and_drops(); }
+}
+
 /// The record in S3, which is what the deployed demo uses.
 ///
 /// ⛔ ONE BUCKET, ONE PREFIX, AND THE LOCK IS A CONDITIONAL PUT. S3 has offered
@@ -347,16 +410,12 @@ pub struct S3 {
     bucket: String,
     prefix: String,
     client: aws_sdk_s3::Client,
-    runtime: tokio::runtime::Runtime,
+    runtime: BlockingRuntime,
 }
 
 impl S3 {
     pub fn open(bucket: impl Into<String>, prefix: impl Into<String>) -> Result<Self> {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(1)
-            .enable_all()
-            .build()
-            .context("starting the async runtime")?;
+        let runtime = BlockingRuntime::new()?;
         let client = runtime.block_on(async {
             let cfg = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
             aws_sdk_s3::Client::new(&cfg)
@@ -1352,7 +1411,7 @@ mod tests {
             .region(aws_sdk_s3::config::Region::new("us-east-1"))
             .credentials_provider(aws_sdk_s3::config::Credentials::new("test", "test", None, None, "test"))
             .endpoint_url(endpoint).force_path_style(true).build();
-        let store = S3 { bucket: "bucket".into(), prefix: "books/".into(), client: aws_sdk_s3::Client::from_conf(config), runtime };
+        let store = S3 { bucket: "bucket".into(), prefix: "books/".into(), client: aws_sdk_s3::Client::from_conf(config), runtime: BlockingRuntime(Some(runtime)) };
         assert!(ObjectStore::put_if_absent(&store, "binary", &payload).unwrap());
         assert!(!ObjectStore::put_if_absent(&store, "binary", b"loser").unwrap());
         assert_eq!(ObjectStore::get(&store, "binary").unwrap(), Some(payload));

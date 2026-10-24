@@ -167,3 +167,21 @@ fresh-process Console read/write readiness, not deployment of a public restore
 endpoint, customer guarantees, provider OAuth resumption, or cross-account
 disaster recovery. Supplemental real CLI, HTTP, and stdio MCP writer probes run
 on another snapshot copy under `writers/`, outside the measured recovery clock.
+
+### Configured HTTP writer failure
+
+The supplemental writer run used a separate restored snapshot under `writers/`.
+CLI posting and striking and stdio MCP posting and draft creation succeeded.
+The HTTP server then panicked before binding: the synchronous S3 adapter called
+`Runtime::block_on` from inside the HTTP server's Tokio runtime. This is a real
+execution-context defect, not an inventory mismatch. No HTTP post was attempted.
+The failed attempt remains in `evidence/writer-attempt-1.zip`, SHA-256
+`e8a5883e30b7e4bcf8331f30df92743cbbfb39094a8a02c13b2bcde83557ff57`, with
+AES256 encryption and seven-day governance retention.
+
+The adapter now leaves an existing runtime before driving its own single
+runtime and shuts it down without blocking an async handler's drop. Regression
+checks cover ordinary synchronous execution and both Tokio runtime flavors.
+An explicit continuation resumes at HTTP without repeating successful posts.
+This supplemental failure does not alter the original recovery cut or measured
+RTO; #300 remains incomplete until the continuation and verifier review pass.
