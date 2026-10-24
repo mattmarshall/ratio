@@ -92,6 +92,19 @@ rust_shared_library(
     deps = [":backend_fixture", ":ratio-project", "//crates/ratio-console", "//crates/ratio-store", "@crates//:serde_json", "@crates//:anyhow"],
 )
 
+# A larger-memory control distinguishes allocation failure from a figure
+# assertion at the measured 1 GiB boundary. It is not the supported profile.
+rust_shared_library(
+    name = "wasm_capacity_control",
+    platform = "//:wasm32",
+    srcs = ["tests/wasm_conformance.rs"],
+    crate_root = "tests/wasm_conformance.rs",
+    edition = "2021",
+    rustc_flags = ["-C", "link-arg=--max-memory=2147483648"],
+    tags = ["manual"],
+    deps = [":backend_fixture", ":ratio-project", "//crates/ratio-console", "//crates/ratio-store", "@crates//:serde_json", "@crates//:anyhow"],
+)
+
 rust_test(
     name = "backend_conformance_test",
     srcs = ["tests/backend_conformance.rs"],
