@@ -5695,3 +5695,16 @@ observation. Both use the same 5,396-entry digest and fold/checkpoint function.
 Backend placement and warm database OS cache prevent a hosted latency claim.
 Final CI remains; hosted TLS/deployment and Postgres operational DR are not
 claimed by this implementation.
+
+### October 23 — FileBook durable state proof (#363, partial)
+
+The #363 premise about NAV and membership recovery is historical; accepted
+#264/#300 and merged #360 already cover those planes. The remaining gap is an
+unpublished FileBook's chart, staged configuration, and promotion state.
+FileBookState.tla checks exact-successor snapshots, stored-before-promotion,
+and historical-cache verification before current durable state is selected.
+The positive model passed 246 states. Three mutations fail for lost promotion
+history, absent configuration bytes, and cache-selected figures. The executable
+sweep ran all 48 manual probes, each red for its named invariant. This proof
+precedes the new Rust state protocol; implementation and recovery-table changes
+remain. Published bootstrap/ControlStore authority must not be broadened.

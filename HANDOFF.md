@@ -1753,3 +1753,14 @@ The final #362 native fixture also races two SeqLog appenders on independent
 connections: both acknowledgements remain at distinct contiguous slots. The
 loopback-only connector checks explicit host addresses as well as hostnames,
 so hostaddr cannot silently route its plaintext proof connection remotely.
+
+## FileBook state proof before code — October 23 (#363, partial)
+
+An unpublished configured book still keeps chart/config/ACTIVE/HISTORY locally.
+The new state model requires an exact predecessor/successor claim: never retry
+a stale full snapshot at a later slot, which loses an acknowledged promotion.
+Configuration bytes must be durable before activation. A cache is checked against
+its pinned historical snapshot and then refreshed to current durable state;
+unknown conflicting bytes refuse. Published bootstrap cache refusal and the
+local no-store layout remain mandatory. Positive model and all 48 named failure
+probes passed their expected outcomes before state protocol implementation.
