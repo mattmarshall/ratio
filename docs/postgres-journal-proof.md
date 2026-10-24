@@ -22,7 +22,7 @@ Database assumptions are durable commit, a unique key that covers namespace
 and object identity, and reads restricted to committed rows. Database roles,
 WAL/backup configuration, service failure, and TLS deployment must be verified
 operationally; this bounded model cannot establish them. An application error
-or abort must never return successful append acknowledgement. Missing sequence
+or abort must never return successful append acknowledgment. Missing sequence
 keys must refuse; a SQL scan must not skip them and cite a nonexistent prefix.
 
 The proof was checked and committed before any native Postgres journal code.

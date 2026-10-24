@@ -184,9 +184,9 @@ fn a_directory_restore_preserves_cited_history_and_isolates_books() {
 }
 
 #[test]
-fn a_legacy_book_attached_after_creation_does_not_gain_a_durable_bootstrap() {
-    // Characterization of the legacy compatibility gap. Published CreateBook
-    // state uses the durable bootstrap path and is covered by bootstrap tests.
+fn a_legacy_attached_book_recovers_metadata_without_inventing_identity_grants() {
+    // Configured unpublished chart/configuration now survive root loss.
+    // Durability must not invent bootstrap identity or membership grants.
     let root = scratch("journal-only");
     let live = root.join("live");
     create(&live, "household", "alice", BookKind::Personal);
@@ -204,10 +204,10 @@ fn a_legacy_book_attached_after_creation_does_not_gain_a_durable_bootstrap() {
     let cold_path = cold_root.join("household");
     let cold = FileBook::open_with(&cold_path, Some(store)).unwrap();
     assert_eq!(cold.entries().unwrap()[0].id, "surviving-post");
-    assert!(cold.active().unwrap().is_none());
-    assert!(cold.history().unwrap().is_empty());
-    assert!(cold.get(&config).is_err());
-    assert!(cold.accounts().unwrap().is_empty());
+    assert_eq!(cold.active().unwrap(),Some(config.clone()));
+    assert_eq!(cold.history().unwrap(),vec![config.clone()]);
+    assert_eq!(ratio_store::Digest::of(&cold.get(&config).unwrap()),config);
+    assert_eq!(cold.accounts().unwrap(),ratio_console::book::chart_for(BookKind::Personal));
     assert!(!cold_path.join("book.toml").exists());
     assert!(!cold_root.join("MEMBERSHIP.tsv").exists());
     assert!(Console::scoped(&cold_root, member("alice")).list_books().unwrap().books.is_empty());

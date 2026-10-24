@@ -152,7 +152,7 @@ messages also pass the [issue-completion check](issue-completion.md).
   behavior. A transport contract test and a disposable PostgreSQL 16 live
   projection run pass; the current restack passed all ten live PostgreSQL 16
   tests. PR #380 merged with final CI passing.
-- **Native Postgres journal (#362, branch-local):** an optional native Rust
+- **Native Postgres journal (#362, merged):** an optional native Rust
   ObjectStore supports immutable conditional claims and ordered snapshot
   scans. Its independent transaction model preceded code; all 45 manual
   probes failed for their named invariants. The complete live conformance gate
@@ -160,7 +160,17 @@ messages also pass the [issue-completion check](issue-completion.md).
   missing-checkpoint folds took 209/205/192 ms on loopback Postgres versus the
   retained remote S3 observation of 792,031 ms; same prefix digest and view
   balances, different backend placement. Hosted TLS/deployment and Postgres
-  operational DR are not proved by that comparison. Final PR CI remains.
+  operational DR are not proved by that comparison. PR #385 merged; full CI
+  and the application deployment/smoke passed.
+
+- **Unpublished FileBook metadata (#363, branch-local):** configured charts,
+  staged configuration, active pins, and promotion history are durable in
+  predecessor-checked state snapshots and blobs. Local caches are verified
+  against historical pins before refresh; missing/corrupt/conflicting state
+  refuses. Published bootstrap/control and local no-store shape are preserved.
+  Recovered metadata creates no identity/kind or membership grants. State proof,
+  48 named failure probes, Console/storage/recovery, and complete backend/native
+  checks passed locally. Live S3 metadata proof and final CI remain.
 
 ## Scope decisions that remain in force
 

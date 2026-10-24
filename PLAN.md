@@ -5708,3 +5708,25 @@ history, absent configuration bytes, and cache-selected figures. The executable
 sweep ran all 48 manual probes, each red for its named invariant. This proof
 precedes the new Rust state protocol; implementation and recovery-table changes
 remain. Published bootstrap/ControlStore authority must not be broadened.
+
+### October 23 — durable unpublished book metadata (#363, implementation)
+
+**durable unpublished book metadata** is the #363 Built phrase. With an
+explicit store, FileBook's chart, staged configuration bytes, active digest,
+and newest-first promotion history live in immutable book-local state revisions
+and content-addressed blobs. A writer claims only its exact successor; stale
+snapshots refuse. A protobuf cache pin identifies the historical state whose
+local bytes must verify before refresh to current. Unknown cache content and
+missing backend refuse; published bootstrap/control authority stays separate.
+No-store layout stays unchanged. Identity/kind and local legacy membership
+are not invented by metadata recovery.
+
+The state proof preceded Rust. Storage, Console, recovery, schema, complete
+native/backend gate, API, MCP, and configured/unset CLI checks passed locally.
+The legacy-loss characterization now asserts metadata recovery while still
+requiring no bootstrap identity or grants. The native namespace fixture uses
+separate local caches, preserving wrong-backend refusal. New seed publication
+prepares metadata before its marker; an unchanged marker retains its one-GET
+data-plane fast path. Historical markers can import unpublished metadata on
+first attach, before figures are served. Live S3 metadata evidence and final
+CI remain before completion.

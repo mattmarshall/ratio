@@ -373,12 +373,12 @@ Severity: **high for Tier 2, none for Tier 1.** Effort: **medium, mechanical.**
 
 ### 5.4 `FileBook`'s residual `std::fs`
 
-Even with an `ObjectStore` installed, `accounts.json` is local
-(`lib.rs:1530`), `bootstrap::materialize` writes a local verified cache, and
-unpublished books keep `config/` on disk via `DirectoryConfigStore`. Published
-books already route configuration through `ControlStore` on the object store,
-so the pattern is half-established. wasm32 has no filesystem; the remaining
-`fs::` paths must route through the store or the target does not build.
+October 23, #363: an explicitly configured unpublished FileBook now stores
+chart, staged configuration, active digest, and promotion history in immutable
+book-local state revisions and blobs. Local files are verified disposable
+caches. Published books keep bootstrap/ControlStore authority; no-store books
+keep DirectoryConfigStore. Cache materialization still uses filesystem APIs;
+this does not yet claim a filesystem-free Console or wasm runtime.
 
 Severity: **blocking for Tier 1.** Effort: **medium.**
 
@@ -426,11 +426,13 @@ kernel.** Effort: **medium, and it is operational as much as it is code.**
 
 ### 5.10 Recovery objectives are unagreed
 
-`docs/recovery.md` records that RPO, RTO, backup frequency, retention, and
-named operators are **all unagreed**. Published books persist post-create
-membership and configuration transitions; the branch-local #300 slice also
-persists NAV strikes. Legacy unpublished books still need local chart,
-identity, and configuration material captured. Multiplying backends now multiplies
+October 23: the representative #264/#300 S3 exercise has accepted RPO/RTO,
+retention, operator, verifier, and measured recovery evidence. Customer-specific
+objectives and recurring procedures still require agreement. Published books
+persist membership, configuration, and operational evidence. #363 adds durable
+unpublished chart/configuration/promotion state; unpublished identity/kind,
+legacy membership, generator metadata, and external source/custody material
+still need explicit capture. Multiplying backends now multiplies
 the number of restore procedures that do not exist. ⚠ **Do not add a backend
 before #264 has answers; add the backend to the answer.**
 

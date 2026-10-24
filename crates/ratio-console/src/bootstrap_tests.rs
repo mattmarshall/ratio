@@ -978,3 +978,21 @@ fn a_new_process_recovers_promotions_and_membership_after_the_serving_root_is_lo
         std::fs::remove_dir_all(&root).unwrap();
     }
 }
+
+#[test]
+fn an_unpublished_console_uses_current_durable_configuration_not_a_stale_cache() {
+    let temp=Temp::new();let id="legacy";
+    Console::scoped(&temp.0,member("creator")).create_book(request(id,book::BookKind::Personal)).unwrap();
+    let objects:Arc<dyn ObjectStore>=Arc::new(MemoryStore::new());
+    let path=temp.0.join(id);
+    let first=FileBook::open_with(&path,Some(objects.clone())).unwrap().active().unwrap().unwrap();
+    let other=temp.0.join("other").join(id);
+    let mut changed=FileBook::open_with(&other,Some(objects.clone())).unwrap();
+    let mut bytes=changed.get(&first).unwrap();bytes.extend_from_slice(b"\n# reviewed durable promotion\n");
+    let latest=changed.put(&bytes).unwrap();changed.set_active(&latest).unwrap();
+    assert_eq!(std::fs::read_to_string(path.join("config/ACTIVE")).unwrap(),first.as_str());
+    let client=Console::scoped(&temp.0,member("creator")).with_object_store(objects.clone());
+    assert_eq!(client.get_book("books/legacy").unwrap().config_digest,latest.as_str());
+    assert_eq!(std::fs::read_to_string(path.join("config/ACTIVE")).unwrap(),latest.as_str());
+    assert!(Console::scoped(&temp.0,member("outsider")).with_object_store(objects).get_book("books/legacy").is_err());
+}

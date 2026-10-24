@@ -206,6 +206,10 @@ __STYLE__
           missing-checkpoint fold measured a 205ms median on local Postgres;
           the retained remote S3 run took 792s. Different placement makes this
           a measured comparison, not a hosted latency guarantee.</li>
+          <li>durable unpublished book metadata — configured stores retain the
+          chart, staged configuration and promotion history through cache loss.
+          Recognized caches refresh; conflicting bytes and stale state updates
+          refuse. Local no-store books keep their existing layout.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
           <li>live custodian statement ingest — a CreateBook Investment book
