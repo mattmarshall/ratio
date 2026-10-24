@@ -18,4 +18,6 @@ message WasmFoldMeasurement {
   string failure = 10;
   int64 elapsed_milliseconds = 11;
   int32 security_count = 12;
+  int64 peak_physical_footprint_bytes = 13;
+  string physical_footprint_method = 14;
 }
