@@ -142,8 +142,10 @@ messages also pass the [issue-completion check](issue-completion.md).
   `open_attached`, Console constructors, MCP default entry points, and storage
   side-plane convenience functions are local-only. The storage library has no
   installed store; the single-backend binary owns its startup singleton.
-  The serving binary still selects one store at startup; a hosted per-book
-  router and provider recovery evidence remain before #360 is complete.
+  The live S3/DirStore seed and separate-process cold recovery passed,
+  including membership isolation and Console NAV replay; the initial audit
+  assertion failure is preserved. Single-backend startup remains explicit.
+  Final CI and merge remain; hosted routing deployment is future product work.
 
 ## Scope decisions that remain in force
 

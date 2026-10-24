@@ -193,6 +193,10 @@ __STYLE__
           Its identical fixture passed against live S3 for every journal prefix,
           all six sequence planes and the trial balance. New crates must enter
           the inventory and conformance registry; emulated results stay separate.</li>
+          <li>explicit per-book storage routing — two books in one process can
+          use separate backends. Live S3 and filesystem books recovered their
+          journals, audit, proposals, and reproducible NAVs in a cold process;
+          wrong backend bindings and foreign membership refuse.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
           <li>live custodian statement ingest — a CreateBook Investment book

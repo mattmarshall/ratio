@@ -68,3 +68,16 @@ for operation in gen kind; do
   grep -F 'Not a directory' "${root}/${operation}.out" >/dev/null
   test ! -f "$target/journal.jsonl"
 done
+
+# Configured filesystem storage receives the journal; unset still writes JSONL.
+RATIO_JOURNAL_LOCAL="${root}/objects" "$ratio" gen --securities 1 --lots-per 1 --book "${root}/generated" >"${root}/generated.out" 2>&1
+test -f "${root}/objects/generated/journal/00000000000000000001"
+test ! -s "${root}/generated/journal.jsonl"
+RATIO_JOURNAL_LOCAL="${root}/objects" "$ratio" balance --book "${root}/generated" >"${root}/generated-balance.out" 2>&1
+"$ratio" gen --securities 1 --lots-per 1 --book "${root}/local-generated" >"${root}/local-generated.out" 2>&1
+test -s "${root}/local-generated/journal.jsonl"
+"$ratio" balance --book "${root}/local-generated" >"${root}/local-balance.out" 2>&1
+# The display includes the book path; compare the figures below its header.
+tail -n +2 "${root}/generated-balance.out" >"${root}/remote-figures"
+tail -n +2 "${root}/local-balance.out" >"${root}/local-figures"
+diff -u "${root}/local-figures" "${root}/remote-figures"

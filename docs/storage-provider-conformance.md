@@ -181,3 +181,33 @@ SHA-256:
 Actual provider results remain distinct from the in-process S3 endpoint.
 Operational-evidence retention/selection is separately covered by accepted
 #264/#300 recovery; mixed live/local book routing remains #360.
+
+## Two-book backend isolation (#360)
+
+Alpha uses actual S3 at `conformance-lab/20261023-f2fdf6e8/360/`; beta uses
+an independent DirStore. Both are served by one explicit Console map. Seed
+source `9cd3a5b62c14f2b95432ba32c5dfeb90ffa1d677` passed in 2.26 seconds.
+It created Investment/Personal books for separate subjects, posted distinct
+capital entries, retained proposals and NAVs, refused opening alpha against
+beta's backend, and removed the serving root.
+
+The first cold attempt failed an incorrect expectation of one audit entry.
+The API correctly returns both creation and the retained draft proposal.
+Its log is preserved. A source audit also found three Console NAV lookups
+still using the local convenience accessor; these now pass the selected store.
+Corrected cold source `16ba4f99042a5a28ab390a52da74e5ccbc3ccc00` passed
+in 17.05 seconds in a new process against the same acknowledged books.
+It recovered exact entry amounts, kinds, proposal bytes, creation actor and
+draft audit rows; NAV replay passed through the Console endpoint. Foreign
+and outsider subjects refused, unregistered IDs refused, and neither backend
+contained any foreign book key. The initial materialization was preserved
+before the continuation; successful writes were never repeated.
+
+Archives in the approved encrypted, versioned, seven-day GOVERNANCE backup:
+
+- `evidence/provider-360-initial.zip`: `3aa4e15a2b09482bd5d1476e49e6c34f5076c84fad4f15d7676f9cf99d31b0bd`.
+- `evidence/provider-360-final.zip`: `b414571629ad21e9242ce409f424305fd983644773d1cf23816fcfa92f4fef2a`.
+
+Both readbacks matched SHA-256 and retention metadata. This is synthetic
+provider isolation evidence, distinct from the MemoryStore/DirStore test and
+from cross-account DR or a deployed hosted routing product.

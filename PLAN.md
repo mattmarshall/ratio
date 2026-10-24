@@ -5620,3 +5620,11 @@ that same handle. NAV list/get defaults also stay local. The manual provider
 harness separates seed and cold processes, with alpha on actual S3 and beta
 on a separate DirStore. Live results remain pending; no provider claim follows
 from the MemoryStore/DirStore test.
+
+**explicit per-book storage routing** is the #360 Built phrase. The live
+S3/DirStore seed passed in 2.26 seconds; corrected separate-process cold
+recovery passed in 17.05 seconds, including Console NAV replay. The initial
+cold audit-count failure remains preserved. CLI creation and Console NAV
+lookups now carry their selected store. Hosted deployment routing remains
+future product work; #360's acceptance concerns this explicit library seam
+and compatibility of single-backend startup. Final CI remains required.
