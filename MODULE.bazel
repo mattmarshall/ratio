@@ -10,6 +10,7 @@ module(name = "ratio", version = "0.0.0")
 
 bazel_dep(name = "rules_rust", version = "0.70.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
+bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "rules_python", version = "1.6.0")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
@@ -44,9 +45,8 @@ bazel_dep(name = "rules_aip", version = "0.2.1")
 bazel_dep(name = "protobuf", version = "33.4")
 bazel_dep(name = "googleapis", version = "0.0.0-20260422-20ac242a")
 
-# prost + tonic codegen for the gRPC server. The DEFAULT rules_rust_prost
-# toolchain (with tonic) applies — ratio needs a real gRPC server, unlike
-# meridian's wasm-constrained tonic-free override.
+# Native servers generate tonic; wasm consumes the same contract with a
+# message-only toolchain and supplies its transport outside the kernel.
 bazel_dep(name = "rules_rust_prost", version = "0.70.0")
 
 # Rust toolchain pinned to 1.85.0 to match the fastverk ecosystem (meridian),
@@ -78,6 +78,7 @@ rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
 
 rust.toolchain(
     edition = "2021",
+    extra_target_triples = ["wasm32-unknown-unknown"],
     versions = ["1.85.0"],
 )
 use_repo(rust, "rust_toolchains")
@@ -85,7 +86,7 @@ register_toolchains("@rust_toolchains//:all")
 
 # Our prost+tonic toolchain (runtimes = @crates) wins over rules_rust_prost's
 # default, so codegen + consumers share one tonic. See //proto:prost_toolchain.
-register_toolchains("//proto:prost_toolchain")
+register_toolchains("//proto:wasm_prost_toolchain", "//proto:prost_toolchain")
 
 # Tectonic toolchain for `//paper`. rules_* modules don't propagate `use_repo`
 # to dependents, so the extension + toolchain are wired here (rules_puml carries

@@ -5737,3 +5737,15 @@ minor-unit trial balance in 6,630 ms. A conflicting cache refused unchanged,
 was explicitly quarantined, and fresh-cache recovery succeeded. Evidence-only
 protobuf/log/proof archive readback matched under seven-day GOVERNANCE retention.
 No raw-object backup copy is claimed. Final PR CI remains the merge gate.
+
+### October 24 — wasm target and runtime gate (#364, in progress)
+
+The pinned Bazel graph selects message-only prost for wasm32 while native gRPC
+keeps tonic. A cacheless FileBook door uses the established immutable metadata
+revision protocol and refuses a nonempty journal with missing metadata.
+The runtime gate compares the existing native JSONL fixture against wasm,
+including every journal and plane byte, four digest pins, and figures.
+Capacity measurement uses 10,000 securities and one or two recorded views,
+a fresh optimized module, and a declared 1 GiB linear-memory limit. Its
+peak allocation and failure-height evidence remain required. Existing Lean
+and TLA figure/claim semantics are reused; no arithmetic is reimplemented.

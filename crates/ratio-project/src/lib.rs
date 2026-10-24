@@ -1343,12 +1343,12 @@ impl Projection {
         // used to pre-scan `fresh` for distinct digests, which needed `fresh` to
         // exist. Resolving on first sight of a digest costs the same one read
         // per configuration and needs nothing held.
-        let started = std::time::Instant::now();
+        let started = ratio_common::clock::Instant::now();
         let mut n = 0usize;
         let mut at = self.at;
         let mut parse_and_fold = std::time::Duration::ZERO;
         let now = book.for_each_entry_since(self.read_to, &mut |entry| {
-            let mark = std::time::Instant::now();
+            let mark = ratio_common::clock::Instant::now();
             if !self.terms.contains_key(&entry.config) {
                 let resolved = Self::terms_of(&book, &entry.config);
                 self.terms.insert(entry.config.clone(), resolved);
@@ -1708,7 +1708,7 @@ impl Projection {
             let method = terms.method;
             let leftover = {
                 let held = fold.lots.open.entry(key.clone()).or_default();
-                let relieving = std::time::Instant::now();
+                let relieving = ratio_common::clock::Instant::now();
                 // ⛔ SPECID IS NOT A METHOD, AND NEITHER IS MINTAX. A named
                 // selection is an attested per-sale choice; a ranking takes
                 // a PRICE. Treating either as `held.relieve(method, …)` is

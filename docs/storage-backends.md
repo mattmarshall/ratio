@@ -565,3 +565,15 @@ The loopback-only proof connector refuses remote plaintext; hosted callers
 must supply a TLS-connected native client. Postgres backup/DR and a hosted
 service are separate operational evidence, not inherited from the accepted
 S3 representative recovery drill.
+
+## Wasm preparation (#364, in progress)
+
+`FileBook::on_store` binds an explicit object store and book ID without touching
+a filesystem cache. It shares journal, plane, configuration, and promotion
+logic with native books; missing metadata for a nonempty journal refuses.
+The existing cache-backed doors retain their verified-cache refusal.
+`//crates/ratio-project:wasm_conformance_test` builds a wasm module with the
+complete Console dependency graph, then runs the reusable fixture against
+native JSONL. The host runner needs Node.js on PATH; there is no console
+JavaScript build inside Bazel. The module imports only instrumentation clock
+and test progress functions. Browser durable storage awaits #365.

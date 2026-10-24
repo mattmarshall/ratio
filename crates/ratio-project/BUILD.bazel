@@ -1,4 +1,4 @@
-load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test", "rust_shared_library", "rust_binary")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -80,6 +80,18 @@ rust_library(
     ],
 )
 
+# Test-only exports exercise the same fixture in a real wasm instance.
+rust_shared_library(
+    name = "wasm_conformance",
+    platform = "//:wasm32",
+    srcs = ["tests/wasm_conformance.rs"],
+    crate_root = "tests/wasm_conformance.rs",
+    edition = "2021",
+    rustc_flags = ["-C", "link-arg=--max-memory=1073741824"],
+    tags = ["manual"],
+    deps = [":backend_fixture", ":ratio-project", "//crates/ratio-console", "//crates/ratio-store", "@crates//:serde_json", "@crates//:anyhow"],
+)
+
 rust_test(
     name = "backend_conformance_test",
     srcs = ["tests/backend_conformance.rs"],
@@ -91,12 +103,27 @@ rust_test(
     ],
 )
 
+rust_binary(
+    name = "wasm_fixture_baseline",
+    srcs = ["tests/wasm_fixture_baseline.rs"],
+    edition = "2021",
+    deps = [":backend_fixture", "//crates/ratio-store", "@crates//:serde_json"],
+)
+
+sh_test(
+    name = "wasm_conformance_test",
+    srcs = ["tests/wasm_conformance.sh"],
+    args = ["$(rootpath :wasm_fixture_baseline)", "$(rootpath tests/wasm_conformance.cjs)", "$(rootpath :wasm_conformance)"],
+    data = [":wasm_fixture_baseline", ":wasm_conformance", "tests/wasm_conformance.cjs"],
+)
+
 # The issue #359 gate: generic journal/plane equivalence, the deployed S3
 # adapter's conditional claim, checkpoint pin/privacy, and the S3 model.
 test_suite(
     name = "backend_conformance_gate",
     tests = [
         ":backend_conformance_test",
+        ":wasm_conformance_test",
         ":ratio-project_test",
         "//crates/ratio-store:ratio-store_test",
         "//crates/ratio:ratio_test",
@@ -109,5 +136,5 @@ test_suite(
 # Source inventory for the build-enforced ObjectStore conformance registry.
 filegroup(
     name = "object_store_source_files",
-    srcs = glob(["src/**/*.rs"]) + ["tests/backend_conformance.rs", "tests/backend_fixture.rs"],
+    srcs = glob(["src/**/*.rs"]) + ["tests/backend_conformance.rs", "tests/backend_fixture.rs", "tests/wasm_conformance.rs"],
 )

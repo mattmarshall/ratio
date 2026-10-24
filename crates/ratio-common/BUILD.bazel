@@ -22,6 +22,7 @@ rust_library(
     name = "ratio-common",
     srcs = [
         "src/lib.rs",
+        "src/clock.rs",
         "src/checked.rs",
         "src/intern.rs",
         ":generated_rs",

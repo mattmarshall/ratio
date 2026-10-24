@@ -28,6 +28,7 @@ aip_proto_library(
         "ratio/storage/v1/recovery.proto",
         "ratio/storage/v1/conformance.proto",
         "ratio/storage/v1/file_state.proto",
+        "ratio/storage/v1/wasm.proto",
         "ratio/console/v1/connect.proto",
         "ratio/console/v1/tax_pack.proto",
         "ratio/v1/ledger.proto",
@@ -82,6 +83,23 @@ rust_prost_toolchain(
 toolchain(
     name = "prost_toolchain",
     toolchain = ":prost_toolchain_impl",
+    toolchain_type = "@rules_rust_prost//:toolchain_type",
+)
+
+# The browser consumes the same messages without an async gRPC transport.
+rust_prost_toolchain(
+    name = "wasm_prost_toolchain_impl",
+    tonic_plugin_flag = "",
+    prost_plugin = "@rules_rust_prost//private/3rdparty/crates:protoc-gen-prost__protoc-gen-prost",
+    prost_plugin_flag = "--plugin=protoc-gen-prost=%s",
+    prost_runtime = ":prost_runtime",
+    prost_types = "@crates//:prost-types",
+)
+
+toolchain(
+    name = "wasm_prost_toolchain",
+    target_compatible_with = ["@platforms//cpu:wasm32"],
+    toolchain = ":wasm_prost_toolchain_impl",
     toolchain_type = "@rules_rust_prost//:toolchain_type",
 )
 

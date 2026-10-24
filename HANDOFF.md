@@ -1790,3 +1790,16 @@ it did not run. Sanitized measurement/proof evidence was retained instead.
 The GitHub project is available in the signed-in in-app browser: #357–#362
 already show Done, and #363 was updated from Blocked to In progress. A CLI
 project-token refresh is no longer needed for these UI updates.
+
+## October 24 — wasm core in progress (#364)
+
+#363 merged as `4bd4cae44a63d548dcde3385688a77b647ab58cb`; required CI passed.
+The next ordered slice builds the same Console/core for wasm32 with message-only
+protobuf generation. A filesystem-free object-backed FileBook uses the existing
+state/append protocols without local cache publication. Native JSONL and wasm
+run the reusable fixture and compare all bytes, six planes, four prefix pins,
+and figures; conditional overwrite and gap refusals execute in wasm too.
+Instrumentation uses a host monotonic nanosecond import; accounting dates and
+figures remain journal/configuration decisions. The 1 GiB linear-memory profile
+needs measured one/two-view ceilings before #364 completion. Browser OPFS and
+transport/authorization are separate #365 work; no browser product is claimed.

@@ -3,6 +3,11 @@ package(default_visibility = ["//visibility:public"])
 # Exposed for crate_universe's `manifests` (the workspace root manifest).
 exports_files(["Cargo.toml"])
 
+platform(
+    name = "wasm32",
+    constraint_values = ["@platforms//cpu:wasm32", "@platforms//os:none"],
+)
+
 # A new production ObjectStore must be reviewed by the same Bazel gate that
 # compares journal and side-plane behavior across registered backends.
 filegroup(

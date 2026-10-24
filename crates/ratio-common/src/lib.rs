@@ -13,6 +13,7 @@ pub mod checked;
 
 /// One copy of each distinct string, shared by everything that names it.
 pub mod intern;
+pub mod clock;
 
 mod generated;
 pub use generated::*;

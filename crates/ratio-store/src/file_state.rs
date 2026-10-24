@@ -25,6 +25,7 @@ struct Version {
 pub(crate) struct StateStore {
     objects: Arc<dyn ObjectStore>,
     book: String,
+    cache: bool,
 }
 impl StateStore {
     pub(crate) fn new(objects: Arc<dyn ObjectStore>, book: &str) -> Result<Self> {
@@ -39,7 +40,12 @@ impl StateStore {
         Ok(Self {
             objects,
             book: book.into(),
+            cache: true,
         })
+    }
+    pub(crate) fn without_cache(mut self) -> Self {
+        self.cache = false;
+        self
     }
     fn log(&self) -> SeqLog {
         SeqLog::new(
@@ -235,6 +241,18 @@ impl StateStore {
         }
     }
     pub(crate) fn attach(&self, root: &Path) -> Result<()> {
+        if !self.cache {
+            if self.versions()?.is_empty() {
+                ensure!(SeqLog::new(self.objects.clone(), format!("{}/journal/", self.book)).height()? == 0,
+                    "durable FileBook metadata is missing for a nonempty journal");
+                let seed = FileBookState::default();
+                if let Err(error) = self.claim(None, seed) {
+                    ensure!(!self.versions()?.is_empty(), "FileBook initialization failed: {error}");
+                }
+            }
+            self.latest()?;
+            return Ok(());
+        }
         let versions = self.initialized(root)?;
         let current = versions.last().expect("seeded");
         if root.join(CACHE_PIN).exists() {
@@ -332,6 +350,7 @@ impl StateStore {
             return Ok(());
         }
         let version = self.claim(Some(&prior), next)?;
+        if !self.cache { return Ok(()); }
         // Validate the old cache again before replacing it. A concurrent
         // cache writer may make this refuse; it must never select a figure.
         self.verify_cache(root, &prior.state)?;
@@ -527,6 +546,25 @@ mod tests {
     }
     fn entry(config: &Digest) -> JournalEntry {
         serde_json::from_value(serde_json::json!({"id":"opening","config":config.as_str(),"postings":[{"dim":1,"amount":12345},{"dim":2,"amount":-12345}]})).unwrap()
+    }
+    #[test]
+    fn cacheless_books_reopen_metadata_and_refuse_a_journal_without_its_state() {
+        let objects = Arc::new(crate::MemoryStore::new());
+        let mut book = FileBook::on_store("cacheless", objects.clone()).unwrap();
+        book.put_accounts(&chart()).unwrap();
+        let digest = book.put(b"rules = []\n").unwrap();
+        book.set_active(&digest).unwrap();
+        book.append(&entry(&digest)).unwrap();
+        drop(book);
+        let reopened = FileBook::on_store("cacheless", objects.clone()).unwrap();
+        assert_eq!(reopened.accounts().unwrap(), chart());
+        assert_eq!(reopened.active().unwrap(), Some(digest.clone()));
+        assert_eq!(reopened.history().unwrap(), vec![digest]);
+        assert_eq!(reopened.entries().unwrap().len(), 1);
+        let missing = Arc::new(crate::MemoryStore::new());
+        assert!(missing.put_if_absent("orphan/journal/00000000000000000001", b"unreadable").unwrap());
+        assert!(FileBook::on_store("orphan", missing).err().unwrap().to_string().contains("metadata is missing"));
+        assert!(FileBook::on_store("../foreign", objects).is_err());
     }
     #[test]
     fn chart_staged_configuration_promotions_and_journal_survive_cache_loss() {

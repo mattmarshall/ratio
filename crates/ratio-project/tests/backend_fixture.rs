@@ -24,7 +24,12 @@ pub const PLANES: [Plane; 6] = [Plane::Deliveries, Plane::Entities, Plane::Facts
     Plane::Actions, Plane::Explanations, Plane::Closes];
 
 pub fn exercise(root: &Path, store: Option<Arc<dyn ObjectStore>>) -> ResultShape {
-    let mut book = FileBook::open_with(root, store.clone()).unwrap();
+    exercise_with(|| FileBook::open_with(root, store.clone()).unwrap())
+}
+
+/// The same fixture can reopen an object-backed book without a host filesystem.
+pub fn exercise_with(mut open: impl FnMut() -> FileBook) -> ResultShape {
+    let mut book = open();
     let config = book.put(b"rules = []\n").unwrap();
     book.set_active(&config).unwrap();
     let mut digests = Vec::new();
@@ -45,7 +50,7 @@ pub fn exercise(root: &Path, store: Option<Arc<dyn ObjectStore>>) -> ResultShape
         }
     }
     drop(book);
-    let reopened = FileBook::open_with(root, store).unwrap();
+    let reopened = open();
     let journal = reopened.entries().unwrap().iter()
         .map(|e| serde_json::to_string(e).unwrap()).collect();
     let planes = PLANES.iter().map(|p| reopened.records::<serde_json::Value>(*p).unwrap()
