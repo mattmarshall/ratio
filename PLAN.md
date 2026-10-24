@@ -5500,3 +5500,13 @@ reads every journal object, so this does not assert one GET plus a tail or a
 live S3/API Gateway latency result. Remaining work: #357 — record deployed
 cold-start evidence and complete the issue acceptance; #264 — prove customer
 recovery independently of disposable checkpoints.
+
+### Amendment, 2026-10-23 — accepted synthetic recovery unlocks provider checks
+
+Matt Marshall accepted the representative AWS recovery result: RPO 0 and RTO
+275.748 seconds, including retained failures and explicit continuations.
+#264/#300 are complete within the documented synthetic scope. Live provider
+conformance for #357–#360 remains the gate for #362. The current checkpoint
+slice adds a manual production-S3 harness; seeded demo cold/checkpoint/tail
+measurements and small checkpoint-corruption cases are distinct, with no
+performance claim until measured. No accounting semantics change.

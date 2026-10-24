@@ -1628,3 +1628,12 @@ snapshot copy, but HTTP startup exposed S3's nested-Tokio-runtime panic. The
 recovery proof slice preserves that failure and fixes the synchronous adapter's
 runtime boundary; see `docs/recovery-drill-2026-10-23.md`. Do not call #300
 complete before the live continuation and independent verifier acceptance.
+
+2026-10-23 accepted recovery: Matt Marshall accepted the documented synthetic
+AWS results; #264/#300 are complete for that scope. The immutable acceptance
+record and exact hash are in `docs/recovery-drill-2026-10-23.md`. Main a90889d
+passed deployment/smoke. Existing #357 PR #377 is restacked onto that main;
+its live-provider harness uses the 20-security/40-lot/3-currency seeded geometry,
+separate fresh processes, exact prefix/trial-balance comparisons, book-tree
+fingerprints, telemetry privacy, and live checkpoint negative cases. Do not
+confuse earlier directory/emulated timing results with provider evidence.

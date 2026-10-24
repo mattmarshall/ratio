@@ -4,8 +4,8 @@ The [October 22 readiness audit](recovery-readiness.md) preserves the initial
 state. Recovery PRs #375 and #376 have since merged. The owner-approved
 [synthetic AWS drill](recovery-drill-2026-10-23.md) now supplies the lab contract;
 measured results and all failed attempts are recorded there. Exact recovery
-and live writer continuations passed; independent verifier acceptance remains
-required.
+and live writer continuations passed, and Matt Marshall accepted the documented
+synthetic results; #264/#300 are complete for that representative scope.
 
 Related: [#264](https://github.com/mattmarshall/ratio/issues/264).
 Durable follow-on work: [#300](https://github.com/mattmarshall/ratio/issues/300).

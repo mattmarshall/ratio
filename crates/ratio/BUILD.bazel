@@ -11,6 +11,7 @@ rust_binary(
         "src/scale.rs",
         "src/watch.rs",
         "src/recovery_live.rs",
+        "src/checkpoint_live.rs",
     ],
     edition = "2021",
     deps = [
@@ -72,4 +73,12 @@ sh_test(
     srcs = ["recovery_cli_test.sh"],
     args = ["$(location :ratio)"],
     data = [":ratio"],
+)
+
+rust_test(
+    name = "checkpoint_live_test",
+    crate = ":ratio",
+    edition = "2021",
+    tags = ["manual", "requires-network"],
+    args = ["--ignored", "--exact", "checkpoint_live::the_seeded_shape_loads_a_checkpoint_from_live_s3"],
 )

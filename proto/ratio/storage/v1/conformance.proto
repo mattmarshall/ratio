@@ -1,0 +1,28 @@
+syntax = "proto3";
+package ratio.storage.v1;
+import "google/protobuf/duration.proto";
+option java_multiple_files = true;
+option java_package = "build.marsh.ratio.storage.v1";
+option java_outer_classname = "ConformanceProto";
+
+// Manual live-provider evidence; never conflated with an emulated endpoint.
+message BackendConformanceEvidence {
+  string run_id = 1;
+  string kernel_revision = 2;
+  string backend_location = 3;
+  repeated BackendConformanceCheck checks = 4;
+  int64 journal_height = 5;
+  string journal_digest = 6;
+  repeated string limitations = 7;
+}
+
+// Exact observed counters and elapsed milliseconds for one named assertion.
+message BackendConformanceCheck {
+  string check_id = 1;
+  bool passed = 2;
+  google.protobuf.Duration elapsed = 3;
+  string detail = 4;
+  int64 object_reads = 5;
+  int64 object_lists = 6;
+  int64 conditional_writes = 7;
+}

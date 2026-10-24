@@ -12,8 +12,9 @@ the initial state from the now-merged #264/#300 tooling and remaining
 unmerged storage stack. The approved [synthetic AWS drill](recovery-drill-2026-10-23.md)
 restored 33 objects with matching figures/digests, measured RPO 0 and RTO
 275.748 seconds against 60 minutes. Seven-day retained evidence includes all
-failures and passing CLI/HTTP/MCP writer continuations. Matt Marshall's independent
-acceptance and live-provider conformance remain prerequisites for #362.
+failures and passing CLI/HTTP/MCP writer continuations. Matt Marshall accepted
+the documented synthetic results; #264/#300 are complete for that scope.
+[Live-provider conformance](storage-provider-conformance.md) remains the gate for #362.
 
 Native iOS build preparation (October 22): crate-universe includes device
 and simulator triples so the separate shell can compile a pinned kernel.
