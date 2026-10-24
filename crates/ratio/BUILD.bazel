@@ -12,6 +12,7 @@ rust_binary(
         "src/watch.rs",
         "src/recovery_live.rs",
         "src/checkpoint_live.rs",
+        "src/height_live.rs",
     ],
     edition = "2021",
     deps = [
@@ -81,4 +82,12 @@ rust_test(
     edition = "2021",
     tags = ["manual", "requires-network"],
     args = ["--ignored", "--exact", "checkpoint_live::the_seeded_shape_loads_a_checkpoint_from_live_s3"],
+)
+
+rust_test(
+    name = "height_live_test",
+    crate = ":ratio",
+    edition = "2021",
+    tags = ["manual", "requires-network"],
+    args = ["--ignored", "--exact", "height_live::height_and_append_cost_are_measured_on_live_s3"],
 )

@@ -5529,3 +5529,9 @@ full listing and 17.041 µs for a direct max; it is not an S3 measurement.
 Live S3 request count, latency, and cost at a nontrivial height remain issue
 acceptance before the performance claim is complete. No production read or
 amount rule changes in this slice.
+
+2026-10-23 #358 provider measurement amendment: paired live height and append
+curves use complete synthetic journals of 5,396 and 65,536 entries, separate
+from the running #357 fold. The bounded lookup's fewer returned keys is not a
+latency claim; both request-round-trip and payload tradeoffs must be reported.
+Conditional claims and hole refusal remain prerequisites.

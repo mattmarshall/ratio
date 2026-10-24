@@ -60,3 +60,14 @@ Five local checkpoint/protobuf/planning suites, both positive TLA checks and
 the expected-red unconditional-write probe passed their intended checks.
 The checkpoint reduces folding and body passes; it still reads the prefix.
 The measured minutes remain well beyond the gateway's 30-second cap.
+## Height and append run contract (#358)
+
+The separate existing #358 worktree measures the actual production S3 height
+method against the default full-list height at 5,396 and 65,536 entries.
+Both datasets are complete, contiguous synthetic sequence journals in a fresh
+`conformance-lab/<run>/358/` namespace. A bounded 32-worker fixture upload is
+outside measurements. Three paired height samples and real conditional
+appends record both curves; a regression on the smaller shape must be reported,
+not hidden by the asymptotic bound. Occupied claims must refuse without
+changing acknowledged bytes, and a separate missing-slot log must refuse
+replay. This does not fold a figure or mutate the running #357 fixture.
