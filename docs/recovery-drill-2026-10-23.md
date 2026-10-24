@@ -253,3 +253,17 @@ source](https://github.com/mattmarshall/ratio/actions/runs/40047277416);
 [wording](https://github.com/mattmarshall/ratio/actions/runs/40047328637) also
 passed. Independent verifier acceptance remains pending; the prior expired
 session and all earlier failures remain documented rather than overwritten.
+
+### Independent verifier acceptance
+
+Matt Marshall explicitly accepted the documented synthetic recovery results in
+this working session and directed progression to live-provider conformance.
+The new immutable `evidence/accepted-recovery-evidence.pb` retains every prior
+phase and limitation, sets `verifier_accepted=true`, and records the acceptance.
+Its SHA-256 is
+`954c96bac3ba3f7698abea6ba646ba2c4b25b39bf5e4eb022771fc29dac889af`;
+readback matched and confirmed AES256/seven-day GOVERNANCE retention. This
+supersedes earlier pending-acceptance statements without erasing their history.
+Issues #264/#300 are complete for the agreed representative synthetic scope.
+The merged runtime fix deployed successfully at `a90889d`; all deployment,
+pre-traffic publication/open, and smoke steps passed in run 40048578309.

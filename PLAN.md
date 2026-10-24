@@ -5483,3 +5483,38 @@ configured-writer run exposed a real HTTP/S3 nested-runtime startup panic after
 CLI and MCP writes succeeded. The runtime boundary fix changes no amount or
 journal admission rule. Retained failure evidence and pending continuation are
 recorded in `docs/recovery-drill-2026-10-23.md`; #264/#300 remain open.
+### Amendment, 2026-10-01 — configured object checkpoints survive a cold process
+
+Related: #357. The projection checkpoint door now has directory and configured
+ObjectStore implementations. A content-addressed blob is published before a
+conditional, height-keyed HEAD claim; a slower older publisher cannot move the
+newest pin backward. The console uses the object backend when installed and
+keeps the directory cache for local books. The journal remains authoritative:
+checkpoint corruption or prefix mismatch falls back to full replay, and the
+checkpoint lives outside the authoritative book tree.
+
+The generated 20-security × 40-lot shape (5,396 entries) measured 13,809 ms
+for a cold full replay and 1,318 ms for a checkpoint load through a local
+directory-backed ObjectStore, with an empty tail. Prefix verification still
+reads every journal object, so this does not assert one GET plus a tail or a
+live S3/API Gateway latency result. Remaining work: #357 — record deployed
+cold-start evidence and complete the issue acceptance; #264 — prove customer
+recovery independently of disposable checkpoints.
+
+### Amendment, 2026-10-23 — accepted synthetic recovery unlocks provider checks
+
+Matt Marshall accepted the representative AWS recovery result: RPO 0 and RTO
+275.748 seconds, including retained failures and explicit continuations.
+#264/#300 are complete within the documented synthetic scope. Live provider
+conformance for #357–#360 remains the gate for #362. The current checkpoint
+slice adds a manual production-S3 harness; seeded demo cold/checkpoint/tail
+measurements and small checkpoint-corruption cases are distinct, with no
+performance claim until measured. No accounting semantics change.
+
+2026-10-23 #357 provider result: the seeded 5,396-entry S3 journal measured
+792,031 ms for a miss/full fold, 355,170 ms for a fresh-process checkpoint hit,
+and 352,426 ms with one tail entry. All view balances and NAV prefix pins
+matched; live corruption/version/prefix cases named their fallback reasons,
+telemetry carried metrics only, and book fingerprints stayed unchanged.
+Immutable evidence and single-run/shared-host limitations are in
+`docs/storage-provider-conformance.md`. This is not a gateway-latency solution.

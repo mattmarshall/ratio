@@ -1433,7 +1433,7 @@ than one that is entirely unclassified.
 | `lean/Ratio/Views.lean` | what a view IS: a recognition predicate. Every view conserves; two differ by exactly what is in flight; a fold with no CUT hides the difference entirely |
 | `tla/Views.tla` | where the views ARE when somebody asks. One prefix, one pass, and the calendar inside the pinned config |
 | `tla/` | `Projection`, `Executor`, `ReliefEngine`, `LotEngine`, `WashEngine`, `WashRestatement`, `WashHoldingPeriod`, `MinTaxEngine`, `SpecIdEngine`, `AverageCostEngine`, `PoolPeriodEngine`, `Actions`, `Valuation`, `ControlPlane`. Each has `manual`-tagged probes that must go RED |
-| `crates/ratio-project` | the read model, the lot book, the relief engine — one pass, N view folds, each with a monotonic cut on the journal's own clock and a band bounded by the settlement lag. ⚠ every memory figure in this file is a ONE-VIEW figure; each view carries its own lot book. Verified journal-prefix checkpoints (`checkpoint`, #310): content-addressed blob + atomic HEAD; pin is prefix + `prefix_digest`; corrupt/mismatch falls back to full replay; crova evaluated and deferred |
+| `crates/ratio-project` | the read model, the lot book, the relief engine — one pass, N view folds, each with a monotonic cut on the journal's own clock and a band bounded by the settlement lag. ⚠ every memory figure in this file is a ONE-VIEW figure; each view carries its own lot book. Verified journal-prefix checkpoints (`checkpoint`, #310/#357): local directory or configured object store, content-addressed blob + conditional height-keyed HEAD; pin is prefix + `prefix_digest`; corrupt/mismatch falls back to full replay. Verification still reads every journal body; crova evaluated and deferred |
 | `crates/ratio-sql-project` | Stage E table snapshot of that fold. One watermark (`prefix` + `ratio_nav::prefix_digest`); lots / positions / aggregates replaced together. A stale pin refuses. Relief is `relieve_by`, not `ORDER BY seq`. Journal stays SoR. `PgProjection` applies `schema.sql` to a live engine via `psql`. `ProjectionReads` is the console/API door when `RATIO_PG_URL` is set. Planner pushdown vs `Pg.Rel.Semantics` is `src/plan.rs` (filter-into-scan; outer-join pushdown refused). The measured 20M-lot fold is `fold_scale` (HANDOFF 10,000 × 2,000, digest `bbf896400835916d0902f9ea175609bccd84be4801f71cc9fc57140f8a60a5d3`, 17.4 s). The 140M-entry / 40GB journal fold stays on Fargate ScaleTask |
 | `crates/ratio-gen` + `ratio bench` | the generated fund and the measurement |
 | `crates/ratio-console` | the console's BFF — 40 RPCs, transcoded onto `/v1`. Lots / positions / Current aggregates read `ProjectionReads` when `RATIO_PG_URL` is set; unset is the in-memory fold. Personal `forecast-YYYY[-MM]` folds posted `scheduled` / `forecast` journal kinds only; unset when none. Connect predictors post that material; they do not close #163 |
@@ -1628,3 +1628,18 @@ snapshot copy, but HTTP startup exposed S3's nested-Tokio-runtime panic. The
 recovery proof slice preserves that failure and fixes the synchronous adapter's
 runtime boundary; see `docs/recovery-drill-2026-10-23.md`. Do not call #300
 complete before the live continuation and independent verifier acceptance.
+
+2026-10-23 accepted recovery: Matt Marshall accepted the documented synthetic
+AWS results; #264/#300 are complete for that scope. The immutable acceptance
+record and exact hash are in `docs/recovery-drill-2026-10-23.md`. Main a90889d
+passed deployment/smoke. Existing #357 PR #377 is restacked onto that main;
+its live-provider harness uses the 20-security/40-lot/3-currency seeded geometry,
+separate fresh processes, exact prefix/trial-balance comparisons, book-tree
+fingerprints, telemetry privacy, and live checkpoint negative cases. Do not
+confuse earlier directory/emulated timing results with provider evidence.
+
+2026-10-23 #357 live S3 passed: full seeded fold 792.031 s, checkpoint hit
+355.170 s, one-entry tail 352.426 s; prefix reads remain. All view/pin,
+book-fingerprint, telemetry and negative-fallback assertions passed. The
+immutable protobuf/log archive and its SHA are in the provider report. Do not
+promise API Gateway cold-start latency from these operator-host measurements.

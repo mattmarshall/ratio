@@ -4103,3 +4103,6 @@ weight = -1
         );
     }
 }
+
+#[cfg(test)]
+mod checkpoint_live;

@@ -4,8 +4,8 @@ The [October 22 readiness audit](recovery-readiness.md) preserves the initial
 state. Recovery PRs #375 and #376 have since merged. The owner-approved
 [synthetic AWS drill](recovery-drill-2026-10-23.md) now supplies the lab contract;
 measured results and all failed attempts are recorded there. Exact recovery
-and live writer continuations passed; independent verifier acceptance remains
-required.
+and live writer continuations passed, and Matt Marshall accepted the documented
+synthetic results; #264/#300 are complete for that representative scope.
 
 Related: [#264](https://github.com/mattmarshall/ratio/issues/264).
 Durable follow-on work: [#300](https://github.com/mattmarshall/ratio/issues/300).
@@ -142,6 +142,9 @@ In-memory projections and the optional Postgres lots/positions/Current tables
 are derived from the journal. They are not a replacement backup for it.
 See [the console store door](../crates/ratio-console/src/store.rs) and
 [projection storage](../crates/ratio-sql-project/src/lib.rs).
+Projection checkpoints under `_checkpoints/` in the configured object store
+are likewise disposable. A restore may omit them and replay from the journal;
+it must never use a checkpoint as evidence that missing journal objects exist.
 
 Start a recovery environment with fresh projection state and rebuild at the
 restored journal prefix. Compare its watermark prefix and journal digest with
