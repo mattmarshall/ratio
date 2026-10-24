@@ -14,6 +14,7 @@ rust_binary(
         "src/checkpoint_live.rs",
         "src/height_live.rs",
         "src/provider_live.rs",
+        "src/isolation_live.rs",
     ],
     edition = "2021",
     deps = [
@@ -110,4 +111,13 @@ rust_test(
     deps = ["//crates/ratio-project:backend_fixture"],
     tags = ["manual", "requires-network"],
     args = ["--ignored", "--exact", "provider_live::the_registered_fixture_conforms_against_live_s3"],
+)
+
+rust_test(
+    name = "isolation_live_test",
+    crate = ":ratio",
+    edition = "2021",
+    deps = ["//crates/ratio-project:backend_fixture"],
+    tags = ["manual", "requires-network"],
+    args = ["--ignored", "--exact", "isolation_live::two_books_remain_isolated_across_live_backends_and_cold_processes"],
 )

@@ -305,6 +305,17 @@ pub fn generate_books_with_progress(
     books: &Books,
     on: &mut dyn FnMut(usize),
 ) -> Result<usize> {
+    generate_books_on_store(path, shape, books, on, None)
+}
+
+/// Generate on an explicitly selected backend, keeping library defaults local.
+pub fn generate_books_on_store(
+    path: &std::path::Path,
+    shape: Shape,
+    books: &Books,
+    on: &mut dyn FnMut(usize),
+    store: Option<std::sync::Arc<dyn ratio_store::ObjectStore>>,
+) -> Result<usize> {
     if books.subscriptions_in_tail > 0 {
         if books.settle_tail <= 0 {
             bail!(
@@ -332,7 +343,7 @@ pub fn generate_books_with_progress(
     }
 
     let _ = std::fs::remove_dir_all(path);
-    let mut b = FileBook::open(path).context("creating the book")?;
+    let mut b = FileBook::open_with(path, store).context("creating the book")?;
 
     b.put_accounts(&[
         Account { dim: 1, display_name: "Investments at fair value".into(), account_type: AccountTypeRecord::Asset },

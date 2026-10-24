@@ -2432,6 +2432,14 @@ pub fn validate_bootstrap(bootstrap: &ratio_store::bootstrap::BookBootstrap) -> 
 }
 
 pub fn initialize(path: &Path, id: &str, display: &str, kind: BookKind) -> Result<Digest> {
+    initialize_with_store(path, id, display, kind, None)
+}
+
+/// Initialize on the caller's selected backend; omission means local storage.
+pub fn initialize_with_store(
+    path: &Path, id: &str, display: &str, kind: BookKind,
+    store: Option<std::sync::Arc<dyn ratio_store::ObjectStore>>,
+) -> Result<Digest> {
     if path.join("accounts.json").is_file() || path.join("book.toml").is_file() {
         bail!("book {id:?} already exists");
     }
@@ -2453,7 +2461,7 @@ pub fn initialize(path: &Path, id: &str, display: &str, kind: BookKind) -> Resul
                 .join("; ")
         );
     }
-    let mut b = FileBook::open(path)?;
+    let mut b = FileBook::open_with(path, store)?;
     b.put_accounts(&chart)?;
     let digest = b.put(cfg.as_bytes())?;
     b.set_active(&digest)?;

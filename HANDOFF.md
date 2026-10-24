@@ -1698,3 +1698,12 @@ serving/CLI callers inject the selected store. A durable caller must use
 store; the single-backend binary owns the startup singleton and still selects
 one store at startup.
 The hosted router and provider recovery evidence remain acceptance work.
+
+### October 23 — explicit storage binding audit for #360
+
+The library defaults stay local. CLI generation and kind initialization now
+pass the selected startup store explicitly; generated-book projection follows
+that same handle. NAV list/get defaults also stay local. The manual provider
+harness separates seed and cold processes, with alpha on actual S3 and beta
+on a separate DirStore. Live results remain pending; no provider claim follows
+from the MemoryStore/DirStore test.

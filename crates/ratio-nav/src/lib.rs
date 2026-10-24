@@ -884,7 +884,7 @@ fn record_with_store(
 
 /// Every strike on a book, in every view, newest first.
 pub fn list(book_path: &std::path::Path) -> Result<Vec<Strike>> {
-    list_with_store(book_path, installed_object_store())
+    list_with_store(book_path, None)
 }
 
 /// Every strike in one book of record, newest first.
@@ -899,7 +899,7 @@ pub fn list_in(book_path: &std::path::Path, view: &str) -> Result<Vec<Strike>> {
 /// lookup on the id alone returns whichever the file happens to hold first —
 /// silently, and labelled with the view the caller asked for.
 pub fn get(book_path: &std::path::Path, view: &str, id: &str) -> Result<Strike> {
-    get_with_store(book_path, view, id, installed_object_store())
+    get_with_store(book_path, view, id, None)
 }
 
 /// Look up one cited answer on an explicitly selected book store.

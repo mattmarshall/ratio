@@ -5611,3 +5611,12 @@ points, and storage side-plane convenience functions are local-only.
 The serving binary still
 selects one store at startup; a hosted per-book router and provider recovery
 evidence remain before this issue is complete.
+
+### October 23 — explicit storage binding audit for #360
+
+The library defaults stay local. CLI generation and kind initialization now
+pass the selected startup store explicitly; generated-book projection follows
+that same handle. NAV list/get defaults also stay local. The manual provider
+harness separates seed and cold processes, with alpha on actual S3 and beta
+on a separate DirStore. Live results remain pending; no provider claim follows
+from the MemoryStore/DirStore test.

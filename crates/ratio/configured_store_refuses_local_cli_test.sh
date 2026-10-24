@@ -52,3 +52,19 @@ refuse_writer strike strike
 refuse_writer close close --through 2026-06-30
 refuse_writer approve approve missing-proposal
 refuse_writer accept accept missing-break --because reviewed
+
+# These entry points create a new book; their failure must still name storage.
+for operation in gen kind; do
+  target="${root}/${operation}-new"
+  if [[ "$operation" == gen ]]; then
+    command_args=(gen --securities 1 --lots-per 1)
+  else
+    command_args=(init --kind personal)
+  fi
+  if RATIO_JOURNAL_LOCAL="${root}/not-a-directory" "$ratio" "${command_args[@]}" --book "$target" >"${root}/${operation}.out" 2>&1; then
+    echo "$operation bypassed configured storage" >&2
+    exit 1
+  fi
+  grep -F 'Not a directory' "${root}/${operation}.out" >/dev/null
+  test ! -f "$target/journal.jsonl"
+done

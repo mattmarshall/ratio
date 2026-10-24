@@ -22,6 +22,8 @@ use serde::Deserialize;
 // Manual operator rehearsal only; no accounting behavior is implemented here.
 #[cfg(test)]
 mod recovery_live;
+#[cfg(test)]
+mod isolation_live;
 // Single-backend CLI and watch startup selection lives in the binary. Library
 // callers must pass a book's store explicitly; process state cannot route a
 // hosted request for one book to another book's backend.
@@ -888,8 +890,8 @@ fn gen(book: PathBuf, args: &[&str]) -> Result<()> {
         bail!("{other:?} is not a dial — see `ratio help`");
     }
 
-    let entries = ratio_gen::generate_books(&book, shape, &books)?;
-    let proj = ratio_project::Projection::of_book(&book)?;
+    let entries = ratio_gen::generate_books_on_store(&book, shape, &books, &mut |_| {}, crate::installed_object_store())?;
+    let proj = ratio_project::Projection::of_file_book(&open_cli_book(&book)?)?;
     // ⚠ THE DEFAULT VIEW'S FIGURES, NAMED AS SUCH WHEN THERE IS AN ELECTION.
     // A generated dual-basis book holds one lot book per view; printing one
     // with no view on it is the substitution the whole feature refuses.
@@ -1571,7 +1573,7 @@ fn split_book_flag(args: &[String]) -> Result<(Vec<String>, PathBuf)> {
 fn init_with_kind(book: PathBuf, kind: &str) -> Result<()> {
     let kind = ratio_console::book::BookKind::parse(kind)?;
     let id = book_label(&book);
-    ratio_console::book::initialize(&book, &id, &id, kind)?;
+    ratio_console::book::initialize_with_store(&book, &id, &id, kind, crate::installed_object_store())?;
     println!("initialized {} book at {}", kind.as_str(), book.display());
     println!("  accounts  {}", ratio_console::book::chart_for(kind).len());
     println!(
