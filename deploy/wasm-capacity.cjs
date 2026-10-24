@@ -3,13 +3,14 @@
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const {execFileSync} = require('node:child_process');
+const {isMainThread, Worker, workerData, parentPort} = require('node:worker_threads');
 const [modulePath, revision, output, requested, views] = process.argv.slice(2);
 if (!modulePath || !/^[0-9a-f]{40}$/.test(revision) || !output ||
     !/^\d+$/.test(requested) || Number(requested) < 1 || Number(requested) > 4294967295 || !['1', '2'].includes(views)) {
   throw new Error('usage: node wasm-capacity.cjs MODULE CLEAN_REVISION OUTPUT.pb HEIGHT VIEWS');
 }
-if (execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8'}).trim() !== revision ||
-    execFileSync('git', ['status', '--porcelain'], {encoding: 'utf8'}).trim()) {
+if (isMainThread && (execFileSync('git', ['rev-parse', 'HEAD'], {encoding: 'utf8'}).trim() !== revision ||
+    execFileSync('git', ['status', '--porcelain'], {encoding: 'utf8'}).trim())) {
   throw new Error('measurement requires a clean checkout at the named revision');
 }
 if (fs.existsSync(output)) throw new Error('refusing to replace measurement');
@@ -26,13 +27,55 @@ while (offset < bytes.length) {
   }
   offset = end;
 }
-if (![1073741824, 2147483648, 4294967296].includes(limit)) throw new Error('unsupported measurement memory profile');
+if (![1073741824, 2147483648, 4294901760, 4294967296].includes(limit)) throw new Error('unsupported measurement memory profile');
+function varint(n) { const bytes = []; n = BigInt(n); do { let b = Number(n & 127n); n >>= 7n; bytes.push(b | (n ? 128 : 0)); } while (n); return Buffer.from(bytes); }
+function number(field, value) { return Buffer.concat([varint(field * 8), varint(value)]); }
+function string(field, value) { const b = Buffer.from(value); return Buffer.concat([varint(field * 8 + 2), varint(b.length), b]); }
+function measurement(completed, peak, returned, failure, elapsed) {
+return Buffer.concat([
+  string(1, revision), string(2, crypto.createHash('sha256').update(bytes).digest('hex')),
+  string(3, `${process.version}; V8 ${process.versions.v8}`), number(4, requested),
+  number(5, views), number(6, completed), number(7, peak), number(8, limit),
+  number(9, returned ? 1 : 0), string(10, failure), number(11, elapsed), number(12, 10000),
+]);
+}
+if (isMainThread) {
+  const progress = new BigUint64Array(new SharedArrayBuffer(16));
+  const started = process.hrtime.bigint();
+  const timeout = Number(process.env.RATIO_WASM_TIMEOUT_MS || 600000);
+  if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 3600000) throw new Error('invalid watchdog timeout');
+  const worker = new Worker(__filename, {argv: process.argv.slice(2), workerData: progress.buffer});
+  let saved = false;
+  function save(bytes) {
+    if (saved) return;
+    saved = true;
+    clearTimeout(watchdog);
+    fs.writeFileSync(output, bytes, {flag: 'wx'});
+  }
+  function failed(reason) {
+    const completed = Atomics.load(progress, 0), peak = Atomics.load(progress, 1);
+    const elapsed = (process.hrtime.bigint() - started) / 1000000n;
+    save(measurement(completed, peak, false, reason, elapsed));
+    console.log({completed: String(completed), peak: String(peak), failure: reason,
+      returned: false, elapsedMilliseconds: Number(elapsed)});
+  }
+  const watchdog = setTimeout(() => {
+    failed('watchdog timeout: kernel call did not return figures');
+    worker.terminate();
+  }, timeout);
+  worker.once('message', bytes => save(Buffer.from(bytes)));
+  worker.once('error', error => failed(`worker failed: ${error.message}`));
+  worker.once('exit', code => { if (!saved) failed(`worker exited without a measurement: ${code}`); });
+} else {
+const progress = new BigUint64Array(workerData);
 const moduleObject = new WebAssembly.Module(bytes);
 let instance, completed = 0, failure = '', returned = false;
 instance = new WebAssembly.Instance(moduleObject, {env: {
   ratio_monotonic_nanos: () => process.hrtime.bigint(),
   ratio_fold_progress: height => {
     completed = height;
+    Atomics.store(progress, 0, BigInt(height));
+    Atomics.store(progress, 1, BigInt(instance.exports.memory.buffer.byteLength));
     if (height % 1000000 === 0) console.log('completed', height,
       'linear_memory_bytes', instance.exports.memory.buffer.byteLength);
   },
@@ -42,15 +85,9 @@ try { returned = instance.exports.ratio_wasm_capacity(Number(requested), Number(
 catch (error) { failure = String(error); }
 const peak = instance.exports.memory.buffer.byteLength;
 const elapsed = (process.hrtime.bigint() - started) / 1000000n;
-function varint(n) { const bytes = []; n = BigInt(n); do { let b = Number(n & 127n); n >>= 7n; bytes.push(b | (n ? 128 : 0)); } while (n); return Buffer.from(bytes); }
-function number(field, value) { return Buffer.concat([varint(field * 8), varint(value)]); }
-function string(field, value) { const b = Buffer.from(value); return Buffer.concat([varint(field * 8 + 2), varint(b.length), b]); }
-fs.writeFileSync(output, Buffer.concat([
-  string(1, revision), string(2, crypto.createHash('sha256').update(bytes).digest('hex')),
-  string(3, `${process.version}; V8 ${process.versions.v8}`), number(4, requested),
-  number(5, views), number(6, completed), number(7, peak), number(8, limit),
-  number(9, returned ? 1 : 0), string(10, failure), number(11, elapsed), number(12, 10000),
-]), {flag: 'wx'});
-console.log({requested: Number(requested), views: Number(views), completed, peak,
-  limit, returned, failure, elapsedMilliseconds: Number(elapsed)});
-if (!returned && !failure) throw new Error('module returned no figure without a refusal');
+
+  if (!returned && !failure) failure = 'module returned no figure without a refusal';
+  parentPort.postMessage(measurement(completed, peak, returned, failure, elapsed));
+  console.log({requested: Number(requested), views: Number(views), completed, peak,
+    limit, returned, failure, elapsedMilliseconds: Number(elapsed)});
+}

@@ -117,6 +117,19 @@ rust_shared_library(
     deps = [":backend_fixture", ":ratio-project", "//crates/ratio-console", "//crates/ratio-store", "@crates//:serde_json", "@crates//:anyhow"],
 )
 
+# A wasm page below 4 GiB avoids representing a full 2^32-byte heap length
+# in usize. The exact-4-GiB diagnostic exposed a non-returning two-view call.
+rust_shared_library(
+    name = "wasm_capacity_address_safe",
+    platform = "//:wasm32",
+    srcs = ["tests/wasm_conformance.rs"],
+    crate_root = "tests/wasm_conformance.rs",
+    edition = "2021",
+    rustc_flags = ["-C", "link-arg=--max-memory=4294901760"],
+    tags = ["manual"],
+    deps = [":backend_fixture", ":ratio-project", "//crates/ratio-console", "//crates/ratio-store", "@crates//:serde_json", "@crates//:anyhow"],
+)
+
 rust_test(
     name = "backend_conformance_test",
     srcs = ["tests/backend_conformance.rs"],
