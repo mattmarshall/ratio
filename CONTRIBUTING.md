@@ -1,5 +1,13 @@
 # Contributing to Ratio
 
+## Owner-only development policy
+
+The owner prohibited outside contributions to Ratio and the private iOS shell
+on October 24, 2026. Do not submit, merge, or import an outside patch. The
+process below applies to owner-authored work and owner-directed tooling; it
+is not an invitation to contribute. Existing AGPL and third-party license
+rights are unchanged. See [LICENSING.md](LICENSING.md).
+
 Read [HANDOFF.md](HANDOFF.md) first, then [AGENTS.md](AGENTS.md) — most of this
 repository is written with LLM assistance and the rules there apply to everyone.
 [DEVELOPING.md](DEVELOPING.md) has the build.

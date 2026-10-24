@@ -1,5 +1,14 @@
 # Ratio — path to revenue
 
+### October 24, 2026 — iOS licensing and contribution decision
+
+Related: `mattmarshall/ratio-ios#3`. The owner approved the linked kernel
+policy record: private all-rights-reserved shell source, no outside
+contributions to either repository, and commercial permission plus a separate
+distribution decision before TestFlight/App Store release. Existing kernel
+AGPL/commercial and third-party rights remain unchanged. See
+[LICENSING.md](LICENSING.md). This changes no amount or exact shell pin.
+
 ### October 24, 2026 — limited on-device token broker decision
 
 Related: #366. The owner approved a **limited token broker decision**: server

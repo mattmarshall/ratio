@@ -1,5 +1,11 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
+October 24, 2026 — Related: `mattmarshall/ratio-ios#3`. The owner approved
+the linked kernel licensing PR and prohibited outside contributions to both
+repositories. [LICENSING.md](LICENSING.md) records the commercial-permission
+and separate distribution prerequisites; private shell source remains all
+rights reserved. The exact shell kernel pin is unchanged.
+
 October 24, 2026 — Related: #366. The approved [limited broker boundary](docs/on-device-token-broker.md)
 keeps provider credentials on the server and all Ratio book content and amount
 decisions on the device. Existing runner regressions remain the baseline; a

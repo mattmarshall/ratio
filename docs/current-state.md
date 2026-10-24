@@ -12,7 +12,8 @@ larger-memory controls pass. See [measurement and limits](wasm-capacity.md).
 OPFS ownership/reload proof (#365) merged in #388. The approved
 [limited token broker decision](on-device-token-broker.md) (#366) separates
 provider custody from device book content; implementation/deployment is future work. Physical iOS
-execution and the separate kernel contribution-policy decision remain open.
+execution remains open; the owner has now prohibited outside contributions
+to both repositories and approved the linked kernel licensing record.
 
 The wasm report also records actual peak physical footprint (981,079,368 /
 1,031,656,704 bytes for the one/two-view 1 GiB boundaries), separate from
@@ -57,8 +58,10 @@ The shell pins merged revision `7b81c1d6f5648ba902d69f30401bf18eedcaf6e4`.
 device/simulator archive, simulator APFS/digest, and C ABI checks. Physical
 device execution remains unproved. Both shell PRs are merged. The owner has
 selected private, all-rights-reserved shell source with no outside contributions;
-that record merged in shell PR #6. Kernel contribution-policy scope and its
-licensing record remain under iOS #3. Distribution remains a separate gate.
+that record merged in shell PR #6. The owner also prohibited outside
+contributions to Ratio and approved its matching [licensing record](../LICENSING.md).
+Bridge issue #2 is complete against its four criteria; physical-device replay
+remains under #1. Distribution remains a separate gate.
 
 Updated October 24, 2026. This is the current implementation summary. Update
 it when behavior lands; keep the reasoning and earlier measurements in
