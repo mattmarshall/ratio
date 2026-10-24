@@ -15,7 +15,7 @@ rust_library(
 )
 filegroup(
     name = "object_store_source_files",
-    srcs = glob(["src/**/*.rs", "tests/**/*.rs"]),
+    srcs = glob(["src/**/*.rs", "tests/**/*.rs"]) + ["BUILD.bazel"],
 )
 rust_test(
     name = "pg_conformance_test",
@@ -28,6 +28,8 @@ rust_test(
         "//crates/ratio-project:backend_fixture",
         "//crates/ratio-store",
         "@crates//:anyhow",
+        "@crates//:postgres",
+        "@crates//:tokio",
     ],
 )
 
@@ -45,5 +47,17 @@ rust_test(
         "//proto:ratio_rust_proto",
         "@crates//:anyhow",
         "@crates//:prost",
+    ],
+)
+
+# Complete native gate: the cheap gate plus real PostgreSQL and its model.
+# Explicitly run by required CI; manual keeps a server out of local //... .
+test_suite(
+    name = "backend_conformance_live_gate",
+    tags = ["manual"],
+    tests = [
+        "//crates/ratio-project:backend_conformance_gate",
+        "//tla:postgres_journal_check",
+        ":pg_conformance_test",
     ],
 )

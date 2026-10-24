@@ -5687,3 +5687,11 @@ beside the existing live projection test; the registry checks both fixture use
 and workflow presence. Bazel repinned postgres 0.19.14 / tokio-postgres 0.7.18
 with Cargo.lock and MODULE.bazel.lock committed together. Equal-height cold
 comparison and final CI remain; no performance claim yet.
+
+**native Postgres object journal** is the #362 Built phrase. The complete live
+backend gate passed, and the equal-height missing-checkpoint comparison measured
+209/205/192 ms on loopback PostgreSQL against the retained 792,031 ms remote S3
+observation. Both use the same 5,396-entry digest and fold/checkpoint function.
+Backend placement and warm database OS cache prevent a hosted latency claim.
+Final CI remains; hosted TLS/deployment and Postgres operational DR are not
+claimed by this implementation.

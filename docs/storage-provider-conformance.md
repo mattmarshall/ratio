@@ -226,3 +226,33 @@ The #360 source audit corrected missed generator, kind initialization, and
 Console NAV lookup bindings before acceptance. No amount-deciding behavior
 changed. Local Console, API, MCP, generator, NAV, recovery, and mandatory
 backend gates passed; final PR CI is the merge gate.
+
+## Native Postgres same-height comparison (#362)
+
+Proof-first source `84fbc2e` precedes implementation `ee0987d5cb1320203509d14612f23c3934ccf9d1`.
+The native client repin built under Rust 1.85. The identical reusable fixture
+passed live PostgreSQL 16, including all prefix pins, six side planes, binary
+bytes, two namespaces, concurrent unique claims, no-hole refusal, reader
+refusal, rollback visibility, and both Tokio runtime flavors. The complete
+required live gate also includes the existing backend suites and the independent
+Postgres transaction model. The executable TLA sweep passed all 45 named probes.
+
+The manual cold comparison uses the same 20-security/40-lot/three-currency/seed-1
+fixture and 5,396-entry digest as the retained actual S3 cold phase:
+`70e476310d24354c03de924285f7df0fe5e3c1ad40fb44d6ca51748b60ae9138`.
+The local journal is removed from the native serving root after seeding; three
+new processes each request a different missing checkpoint. Both backends run
+`follow_with_checkpoint_store`, including prefix verification, full fold, and
+checkpoint publication. All declared-view balances and the native prefix digest
+match the independent full local reference. Source is committed before runs.
+
+| Backend placement | Missing-checkpoint full fold | Samples |
+|---|---:|---:|
+| Actual remote S3, retained #357 observation | 792,031 ms | 1 |
+| Loopback PostgreSQL 16 on the operator host | 209 / 205 / 192 ms (median 205 ms) | 3 fresh processes |
+
+This is an explicit placement comparison. The database OS cache was not purged,
+and Postgres is local while S3 is remote. It does not prove RDS/Lambda latency,
+a production throughput ceiling, hosted cost, or Postgres recovery guarantees.
+The configured S3 application deployment/smoke after #360 passed
+[run 40055926978](https://github.com/mattmarshall/ratio/actions/runs/40055926978).

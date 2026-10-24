@@ -133,7 +133,7 @@ messages also pass the [issue-completion check](issue-completion.md).
   cadence, cross-account disaster recovery and real OAuth resumption are not
   implied; see the recovery and provider reports for exact limits.
 
-- **Per-book storage (#360, branch-local):** the console can resolve two
+- **Per-book storage (#360, merged):** the console can resolve two
   MemoryStore and DirStore by book ID in one process, including cold
   published-book discovery, journal writes, and active configuration. An unregistered ID
   refuses, as does opening one materialized book against the other store.
@@ -145,12 +145,22 @@ messages also pass the [issue-completion check](issue-completion.md).
   The live S3/DirStore seed and separate-process cold recovery passed,
   including membership isolation and Console NAV replay; the initial audit
   assertion failure is preserved. Single-backend startup remains explicit.
-  Final CI and merge remain; hosted routing deployment is future product work.
-- **Postgres execution (#361, branch-local):** `PgProjection` routes all SQL
+  PR #374 merged and its deployment/smoke run passed. Hosted routing
+  deployment is future product work.
+- **Postgres execution (#361, merged):** `PgProjection` routes all SQL
   through `PgExecutor`; the default `PsqlExecutor` retains the subprocess
   behavior. A transport contract test and a disposable PostgreSQL 16 live
   projection run pass; the current restack passed all ten live PostgreSQL 16
-  tests. No library client or Postgres journal backend exists.
+  tests. PR #380 merged with final CI passing.
+- **Native Postgres journal (#362, branch-local):** an optional native Rust
+  ObjectStore supports immutable conditional claims and ordered snapshot
+  scans. Its independent transaction model preceded code; all 45 manual
+  probes failed for their named invariants. The complete live conformance gate
+  passed local PostgreSQL 16 plus existing backend suites. Equal 5,396-entry
+  missing-checkpoint folds took 209/205/192 ms on loopback Postgres versus the
+  retained remote S3 observation of 792,031 ms; same prefix digest and view
+  balances, different backend placement. Hosted TLS/deployment and Postgres
+  operational DR are not proved by that comparison. Final PR CI remains.
 
 ## Scope decisions that remain in force
 

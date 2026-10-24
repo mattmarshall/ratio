@@ -36,12 +36,18 @@ impl PgStore {
     /// Bind an already authenticated native client to one immutable namespace.
     /// Schema creation is deliberate here; neither a URL nor server is default.
     pub fn from_client(client: Client, schema: &str, namespace: &str) -> Result<Self> {
+        let this = Self {
+            client: Mutex::new(Some(client)),
+            table: format!("{schema}.immutable_objects"),
+            namespace: namespace.into(),
+        };
         ensure!(
             !schema.is_empty()
+                && schema.len() <= 63
                 && schema
                     .chars()
                     .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'),
-            "schema must be [a-z0-9_]+"
+            "schema must be 1..63 bytes of [a-z0-9_]"
         );
         ensure!(
             !namespace.is_empty()
@@ -49,11 +55,6 @@ impl PgStore {
                 && !namespace.chars().any(char::is_control),
             "invalid object namespace"
         );
-        let this = Self {
-            client: Mutex::new(Some(client)),
-            table: format!("{schema}.immutable_objects"),
-            namespace: namespace.into(),
-        };
         this.call(|client| {
             ensure!(client.query_one("SHOW fsync", &[])?.get::<_, String>(0) == "on",
                 "Postgres journal requires fsync=on");

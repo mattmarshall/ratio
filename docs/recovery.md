@@ -327,3 +327,21 @@ so backup access control and retention protection are still operator decisions.
   recovery owners. Journal/fact citations cannot replace missing source bytes.
 - Customer-specific RPO/RTO, custody, and recurring operational procedures
   still require agreement before a customer production recovery claim.
+
+## Native Postgres adapter recovery boundary (#362)
+
+The optional native adapter stores immutable objects in
+`<schema>.immutable_objects(namespace, object_key, body)`. Every authoritative
+journal, bootstrap/control, and evidence key in the object inventory belongs
+to the selected namespace; projection SQL tables remain disposable. Preserve
+that complete namespace, its book IDs, original deliveries, and Connect custody
+locations. A different serving directory alone does not isolate a restore.
+
+The adapter's native fixture checks conditional claims, ordered committed reads,
+namespace isolation, and missing-sequence refusal. This is conformance evidence,
+not a Postgres operational restore drill. The accepted #264/#300 exercise
+remains scoped to its documented S3 representative environment. Do not claim
+a deployed Postgres recovery RPO/RTO, retention, TLS identity, backup, or restore
+from the local cold-fold comparison. The current recovery CLI supports directory
+and S3 locations; selecting the native adapter for operational export requires
+an explicit integration and a separately measured recovery procedure.

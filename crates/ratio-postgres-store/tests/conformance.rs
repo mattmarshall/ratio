@@ -6,8 +6,8 @@ use std::sync::{Arc, Barrier};
 
 #[test]
 fn the_native_backend_passes_the_registered_fixture_and_atomic_claims() -> Result<()> {
-    let url = std::env::var("RATIO_PG_URL")
-        .expect("RATIO_PG_URL is required for native Postgres conformance");
+    let url = std::env::var("RATIO_NATIVE_PG_URL")
+        .expect("RATIO_NATIVE_PG_URL is required for native Postgres conformance");
     let root = std::path::PathBuf::from(std::env::var("TEST_TMPDIR")?).join("native-pg-fixture");
     let schema = format!("ratio_objects_{}", std::process::id());
     let alpha = Arc::new(PgStore::connect_local(&url, &schema, "alpha")?);
@@ -30,6 +30,15 @@ fn the_native_backend_passes_the_registered_fixture_and_atomic_claims() -> Resul
         alpha.get("namespace-private")?.as_deref() == Some(b"alpha".as_ref())
             && beta.get("namespace-private")?.as_deref() == Some(b"beta".as_ref()),
         "namespace bytes leaked"
+    );
+    let binary = vec![0, 255, 1, 128, 10, 0];
+    ensure!(
+        alpha.put_if_absent("binary", &binary)? && alpha.get("binary")? == Some(binary),
+        "binary object changed"
+    );
+    ensure!(
+        PgStore::connect_local(&url, &"x".repeat(64), "refused").is_err(),
+        "schema identifier truncation permitted"
     );
     let rival = Arc::new(PgStore::connect_local(&url, &schema, "alpha")?);
     let barrier = Arc::new(Barrier::new(2));
@@ -95,6 +104,37 @@ fn the_native_backend_passes_the_registered_fixture_and_atomic_claims() -> Resul
             "consumer error swallowed"
         );
         ensure!(log.height()? == 2, "refused reader damaged connection");
+    }
+    let mut direct = postgres::Client::connect(&url, postgres::NoTls)?;
+    let mut transaction = direct.transaction()?;
+    transaction.execute(
+        &format!(
+            "INSERT INTO {schema}.immutable_objects (namespace,object_key,body) VALUES ($1,$2,$3)"
+        ),
+        &[&"alpha", &"aborted", &b"private".as_ref()],
+    )?;
+    ensure!(
+        alpha.get("aborted")?.is_none(),
+        "uncommitted row became visible"
+    );
+    transaction.rollback()?;
+    ensure!(alpha.get("aborted")?.is_none(), "aborted row survived");
+    for multithread in [false, true] {
+        let mut builder = if multithread {
+            tokio::runtime::Builder::new_multi_thread()
+        } else {
+            tokio::runtime::Builder::new_current_thread()
+        };
+        builder.enable_all().build()?.block_on(async {
+            let store = PgStore::connect_local(&url, &schema, "runtime")?;
+            store.put_if_absent("works", b"committed")?;
+            ensure!(
+                store.get("works")?.as_deref() == Some(b"committed".as_ref()),
+                "runtime path failed"
+            );
+            drop(store);
+            anyhow::Ok(())
+        })?;
     }
     ensure!(
         PgStore::connect_local("postgres://ratio@192.0.2.1/db", &schema, "refused").is_err(),

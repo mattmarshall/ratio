@@ -41,6 +41,7 @@ def main() -> None:
     adapter = ""
     native = ""
     workflow = ""
+    native_build = ""
     for raw in sys.argv[1:]:
         path = pathlib.Path(raw)
         normalized = path.as_posix()
@@ -53,6 +54,8 @@ def main() -> None:
             native = source
         if normalized.endswith(".github/workflows/build.yml"):
             workflow = source
+        if normalized.endswith("crates/ratio-postgres-store/BUILD.bazel"):
+            native_build = source
         if "crates/" not in normalized:
             continue
         relative = "crates/" + normalized.split("crates/", 1)[1]
@@ -65,7 +68,10 @@ def main() -> None:
             f"ObjectStore implementations changed: missing={missing}, extra={extra}. "
             "Extend backend_conformance_gate with a fixture for each new backend."
         )
-    if "backend_fixture::exercise" not in native or "//crates/ratio-postgres-store:pg_conformance_test" not in workflow:
+    if ("backend_fixture::exercise" not in native
+        or "//crates/ratio-postgres-store:backend_conformance_live_gate" not in workflow
+        or '":pg_conformance_test"' not in native_build
+        or '"//crates/ratio-project:backend_conformance_gate"' not in native_build):
         raise SystemExit("Native Postgres conformance must use the reusable fixture and run in required live CI")
     for required in ("MemoryStore::new", "DirStore::at", "MemoryStore::unconditional"):
         if required not in fixture:

@@ -26,9 +26,9 @@ or abort must never return successful append acknowledgement. Missing sequence
 keys must refuse; a SQL scan must not skip them and cite a nonexistent prefix.
 
 The proof was checked and committed before any native Postgres journal code.
-The implementation, pure Rust client repin, reusable live backend fixture, and
-same-height S3 cold-fold comparison remain required. The execution-trait
-prerequisite must merge before native journal implementation proceeds.
+At that proof commit, implementation, client repin, live conformance, and
+equal-height measurement remained required. The execution-trait prerequisite
+subsequently merged before native journal code was written.
 
 Implementation follows the proof commit. The separate native crate uses
 [postgres 0.19.14](https://docs.rs/postgres/0.19.14/postgres/struct.Client.html)
@@ -51,3 +51,10 @@ It includes exact journal/all-six-plane equivalence, all prefix pins, a
 concurrent unique claim, two namespaces, and no-hole refusal on all seven
 planes. CI runs it explicitly on every build; the cheap registry requires that
 workflow binding. Simulated backends remain a separate hermetic gate.
+
+The complete native live gate passed 9/9 targets after implementation, and the
+final native fixture passed rollback visibility, nested-runtime construction
+and destruction, binary bytes, and schema identifier-length refusal. Three
+fresh-process 5,396-entry missing-checkpoint samples measured 209/205/192 ms,
+with the exact retained S3 journal digest and view balances. See the provider
+report for placement limits and preserved evidence. Final PR CI remains.
