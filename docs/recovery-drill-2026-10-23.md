@@ -101,3 +101,28 @@ inspect authoritative state before an explicitly planned continuation.
 Measured results and failures will be recorded here after execution. Verifier
 acceptance remains pending; automated checks cannot accept evidence for Matt
 Marshall. Issues #264 and #300 remain open until their full criteria are proved.
+
+
+## Preserved first-attempt result and continuation plan
+
+The live fixture and clean capture passed: 33 objects, 50,749 bytes; alpha
+NAV 60,000 at prefix 2 with three configurations; beta NAV 7,000 at prefix 1.
+All 23 negative checks passed (balanced memo corruption and missing/corrupt
+bytes for each of 11 protected planes). Source/root loss and clean S3 restore
+passed. Fresh-process verification matched the exact object inventory, figures,
+digests, and configuration histories, then stopped because the fixture expected
+two audit lines. CreateBook correctly adds an attributed creation line before
+the two explicit review lines, so three is the required count.
+
+This is a fixture assertion failure, not evidence of lost or extra restored
+bytes: the complete inventory comparison passed first. The original failure
+record and logs are retained in `evidence/attempt-1.zip` in the backup bucket,
+SHA-256 `42880ebcc0a1f3799832ffbae9e9b1084e2dae28acde209dbe54e7b1f3b0ebc8`.
+The third line was inspected and names `alice`, `created`, and `alpha`.
+
+The continuation corrects the expected count and asserts all three lines'
+ordering/attribution. It will use another absent serving root against the
+already restored namespace; the original backup, failure evidence, and prior
+serving root remain intact. RTO continues from the original source-loss start,
+including diagnosis and repair. It is not reset to hide the failed assertion.
+No final verification or verifier acceptance is claimed by this amendment.

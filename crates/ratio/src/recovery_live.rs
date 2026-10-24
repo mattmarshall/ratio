@@ -367,7 +367,23 @@ fn verify(
         proposals::read_with_store(&alpha, "reviewed-draft", Some(store.clone()))?.as_deref()
             == Some("rules = []\n")
     );
-    ensure!(changes::read_with_store(&alpha, Some(store.clone()))?.len() == 2);
+    // CreateBook records its own attributed creation before the two reviews.
+    // The first live attempt exposed this mistaken fixture expectation.
+    let audit = changes::read_with_store(&alpha, Some(store.clone()))?;
+    ensure!(
+        audit.len() == 3,
+        "creation plus both review audit records must survive"
+    );
+    ensure!(
+        audit[0].contains("\talice\tcreated\talpha\t"),
+        "creation attribution differs"
+    );
+    for n in 0..2 {
+        ensure!(
+            audit[n + 1].trim_end() == format!("{n}\talice\tsynthetic-review\tcapital\tdigest"),
+            "review audit ordering or attribution differs"
+        );
+    }
     let mut book = FileBook::open_with(&alpha, Some(store.clone()))?;
     ensure!(
         book.closes()?.len() == 2
