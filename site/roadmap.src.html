@@ -201,6 +201,11 @@ __STYLE__
           accepts an explicit executor; its default keeps the existing psql
           transport, atomic snapshot replacement, and pinned watermark refusal.
           The journal remains authoritative.</li>
+          <li>native Postgres object journal — an optional Rust adapter preserves
+          conditional claims and committed, ordered replay. The same 5,396-entry
+          missing-checkpoint fold measured a 205ms median on local Postgres;
+          the retained remote S3 run took 792s. Different placement makes this
+          a measured comparison, not a hosted latency guarantee.</li>
           <li>Reconciliation against a counterparty file, with each difference
           measured against the fund's declared threshold.</li>
           <li>live custodian statement ingest — a CreateBook Investment book

@@ -538,3 +538,28 @@ live PostgreSQL 16 projection tests (1.06 seconds), including stale-watermark
 and replaced-journal refusal, HIFO relief, replay digest equivalence, and
 atomic snapshot replacement without double counting. SQL unit tests and the
 expected-failure TLA probe gate passed. Final PR CI remains the merge gate.
+
+### October 23 — native Postgres journal (#362, branch-local)
+
+The explicit optional `ratio-postgres-store` crate uses postgres 0.19.14 and
+tokio-postgres 0.7.18 with committed Bazel repins. It implements immutable
+namespace/key claims and a bounded ordered repeatable-read scan. The shared
+SeqLog refuses missing, repeated, truncated, or shrinking prefixes independently
+of that optimization. Its own transaction TLA model was committed before code;
+three probes cover uniqueness, early acknowledgement, and dirty reads.
+
+`//crates/ratio-postgres-store:backend_conformance_live_gate` adds actual native
+Postgres fixture execution and that model to the existing backend gate. Required
+CI runs this complete gate; the registry refuses removing its fixture/workflow
+binding. An unset native test URL fails rather than skipping. The existing
+`RATIO_PG_URL` retains its projection-only meaning and no server becomes default.
+
+The same 5,396-entry journal and digest as live S3 were folded through the same
+missing-checkpoint function in fresh processes. Native loopback samples were
+209/205/192 ms; retained remote S3 was 792,031 ms. This measures the elimination
+of per-object network reads, not a deployed database latency guarantee or a
+hosted cost comparison. See [the measured report](storage-provider-conformance.md).
+The loopback-only proof connector refuses remote plaintext; hosted callers
+must supply a TLS-connected native client. Postgres backup/DR and a hosted
+service are separate operational evidence, not inherited from the accepted
+S3 representative recovery drill.

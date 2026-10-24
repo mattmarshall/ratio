@@ -1731,3 +1731,25 @@ live PostgreSQL 16 projection tests (1.06 seconds), including stale-watermark
 and replaced-journal refusal, HIFO relief, replay digest equivalence, and
 atomic snapshot replacement without double counting. SQL unit tests and the
 expected-failure TLA probe gate passed. Final PR CI remains the merge gate.
+
+## Postgres journal proof first — October 23 (#362, partial)
+
+See docs/postgres-journal-proof.md. The transaction model and all 45 named
+failure probes passed their expected outcomes before any native journal code.
+Unique-key claim, commit-before-ack, and committed-only reads are independent
+load-bearing assumptions. A database scan must preserve missing-key refusal.
+The real client, backend fixture, cold-fold comparison, and #361 merge remain.
+
+The #362 native crate follows proof commit 84fbc2e. The native client is kept
+outside ratio-store so a device build does not inherit its networking runtime.
+PgStore moves synchronous driver work and destruction off caller Tokio runtimes.
+Do not wrap it in an ObjectStore that drops scan_sequence delegation: that
+would restore one get per journal entry. SeqLog checks contiguity independently
+of the optimized scan. The native fixture is an explicitly required live CI
+target; a machine without PostgreSQL can run the hermetic gate, but cannot
+claim the native adapter passed without its live target.
+
+The final #362 native fixture also races two SeqLog appenders on independent
+connections: both acknowledgements remain at distinct contiguous slots. The
+loopback-only connector checks explicit host addresses as well as hostnames,
+so hostaddr cannot silently route its plaintext proof connection remotely.

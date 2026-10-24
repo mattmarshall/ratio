@@ -1,0 +1,10 @@
+[package]
+name = "ratio-postgres-store"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ratio-store = { path = "../ratio-store" }
+anyhow = "1"
+postgres = "=0.19.14"
+fallible-iterator = "0.2"

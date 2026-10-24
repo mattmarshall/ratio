@@ -134,11 +134,12 @@ jobs:
         run: bazel query 'tests(//...)' --output=label 2>/dev/null | sort
 
       # ⛔ NOT A SKIP. RATIO_PG_URL unset fails the target. postgresql-client
-      # is `psql`; the crate talks to the service through that, not a rust
-      # postgres crate (the package stays off the Cargo workspace).
+      # supplies the retained projection transport. The native journal also
+      # runs its reusable conformance fixture against this same live service.
       - name: Live projection engine
         env:
           RATIO_PG_URL: postgres://ratio:ratio@127.0.0.1:5432/ratio
+          RATIO_NATIVE_PG_URL: postgres://ratio:ratio@127.0.0.1:5432/ratio
         run: |
           sudo apt-get update -qq
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq postgresql-client
@@ -146,3 +147,7 @@ jobs:
             --test_env=RATIO_PG_URL \
             -- \
             //crates/ratio-sql-project:pg_engine_test
+          bazel test --lockfile_mode=error --test_output=errors \
+            --test_env=RATIO_NATIVE_PG_URL \
+            -- \
+            //crates/ratio-postgres-store:backend_conformance_live_gate
