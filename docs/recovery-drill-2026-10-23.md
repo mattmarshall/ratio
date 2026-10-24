@@ -201,3 +201,27 @@ local bytes. Attempt 3 records the overly narrow diagnostic assertion at `post`:
 `e95ac30e26951bda82567414b1c26565a746cdd5a4ccc57121e4aba2324f45d4`.
 The harness now accepts either that exact fail-closed diagnostic or the explicit
 AWS `NoSuchBucket` error, always requiring failure and unchanged local bytes.
+
+### Final supplemental writer results
+
+The explicit continuation passed all unavailable-backend refusals for `init`,
+`post`, `strike`, `close`, `approve`, `accept`, and stdio MCP, with unchanged
+local book bytes. After deleting the supplemental serving root, new CLI and
+MCP processes cold-loaded the books successfully. Live S3 readback reproduced
+alpha's exact three journal IDs (including the CLI post), beta's exact three
+IDs (including MCP and HTTP posts), the CLI NAV strike of 62,500 at prefix 3,
+and the unapproved MCP draft. The HTTP unbalanced post was refused.
+
+Final writer source: `b612799711e5bbc2e4728d052825bf6f2c27c2e2`.
+Evidence: backup `evidence/writer-probes-refusal-continuation.zip`, SHA-256
+`4d4b7ac3f00f2dcaae2553b7a14683dee9c1b4ddc7033d7ccefe860f3ca1c67e`;
+the uploaded archive was read back and matched. Earlier failed phases remain
+in the protobuf record and immutable attempt archives. The four affected Bazel
+suites (CLI, API, configured-store refusal, PLAN) passed, in addition to the
+three runtime-context regression cases.
+
+**Independent verifier acceptance remains pending.** Matt Marshall must review
+the figures, RTO, inventories, failures, retained evidence, and stated scope
+limitations before either recovery issue can be treated as complete. Live
+Plaid/Google resumption, customer deployment objectives, physical iOS signing,
+and provider conformance are not proved by these results.
