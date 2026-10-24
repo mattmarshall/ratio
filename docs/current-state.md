@@ -1,5 +1,13 @@
 # Ratio — current state
 
+October 24 owner decisions: **on-device Personal and hosted SQL tiering** is
+[adopted](storage-backends.md), with the limited provider broker, funds/shared
+workspaces on the hosted SQL direction, and all existing recovery gates.
+#264/#300 and #357–#366 are complete for their documented scope. iOS #2
+(bridge) and #3 (private/all-rights-reserved shell, no outside contributions to
+either repository, matching kernel licensing record) are complete. Physical
+iPhone journal replay remains #1; no TestFlight release is authorized.
+
 October 24 storage update: #357–#363 are merged and complete for their recorded
 evidence scope. #363's [required CI](https://github.com/mattmarshall/ratio/actions/runs/40061255498)
 and [post-merge deployment/smoke](https://github.com/mattmarshall/ratio/actions/runs/40062112547)
@@ -48,7 +56,7 @@ failures and passing CLI/HTTP/MCP writer continuations. Matt Marshall accepted
 the documented synthetic results; #264/#300 are complete for that scope.
 The [live checkpoint provider run](storage-provider-conformance.md) passed,
 including cold/checkpoint/tail measurements and negative cases. #358–#360
-conformance remains the gate for #362.
+live conformance passed before the #362 Postgres journal slice.
 
 Native iOS build preparation (October 22): crate-universe includes device
 and simulator triples so the separate shell can compile a pinned kernel.

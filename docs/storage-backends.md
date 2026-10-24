@@ -1,9 +1,40 @@
 # Storage backends and the distribution model
 
-Status: **analysis with the merged #300 NAV evidence amendment.** The
-backend verdicts remain proposals. This maps the persistence layer and names
-the blockers between the current shape and a two-track distribution model —
-on-device Personal, hosted SQL for funds and shared workspaces.
+## Adopted decision — October 24, 2026
+
+Matt Marshall adopted **on-device Personal and hosted SQL tiering** for #367.
+Personal books run locally with the [limited provider broker](on-device-token-broker.md);
+funds and shared workspaces follow the hosted SQL direction. The same Ratio
+kernel decides every amount. The journal remains authoritative, projections
+remain disposable, and each book selects an explicit backend. This decision
+changes neither the serving default nor a customer's operating contract.
+
+| Evidence gate | Recorded result |
+|---|---|
+| Recovery before added backends | Owner-approved synthetic AWS contract and accepted drill: RPO 0 at quiescence, RTO 275.748 seconds against 60 minutes, seven-day retained evidence; named operator and verifier |
+| Backend-independent work #357–#360 | Merged; actual S3 checkpoint, cold-load/height measurements, all plane/prefix digest checks, conditional claims, gap refusal, privacy and two-book isolation |
+| Hosted foundation #361–#362 | Merged execution seam and TLA-first native Postgres object journal; mandatory shared conformance; local missing-checkpoint fold median 205 ms versus retained remote S3 792,031 ms, with different placement |
+| On-device foundation #363–#365 | Merged durable metadata, native/wasm equivalence, one/two-view capacity boundaries and proof-first OPFS with actual browser ownership/reload evidence |
+| Provider custody #366 | Approved scope and existing simulated regressions; broker service not deployed |
+
+Reports: [accepted recovery](recovery-drill-2026-10-23.md),
+[live provider conformance](storage-provider-conformance.md),
+[wasm capacity](wasm-capacity.md), [OPFS evidence](opfs-storage.md),
+and [broker boundary](on-device-token-broker.md). All backend crates stay in
+this tree behind one conformance suite. A separate store repository waits for
+a second consumer.
+
+The default wasm module caps linear memory at 1 GiB; host/UI/index memory is
+additional. The exact-4-GiB profile did not return and is unsupported. These
+measurements select a direction, not a universal browser/device budget.
+Physical iOS journal replay remains unverified. Hosted Postgres backup/restore,
+a deployed SQL service, broker authentication/revocation/real-token restore,
+complete device UI, backup key custody and sync remain separate delivery gates.
+The accepted S3 lab drill does not establish their recovery guarantees.
+
+The numbered analysis below preserves the original rationale and historical
+obstacles. Its branch-local/proposed status statements are superseded by this
+decision and the dated implementation/evidence amendments at the end.
 
 Related decision gate: [#282](https://github.com/mattmarshall/ratio/issues/282)
 (reviewed config storage). Related measurement: [#268](https://github.com/mattmarshall/ratio/issues/268).
@@ -566,7 +597,7 @@ must supply a TLS-connected native client. Postgres backup/DR and a hosted
 service are separate operational evidence, not inherited from the accepted
 S3 representative recovery drill.
 
-## Wasm preparation (#364, in progress)
+## Wasm conformance and measured capacity (#364, merged)
 
 `FileBook::on_store` binds an explicit object store and book ID without touching
 a filesystem cache. It shares journal, plane, configuration, and promotion
@@ -591,7 +622,7 @@ The default 1 GiB module and page-below-address-limit diagnostic have verified
 success/refusal boundaries. The host must discard an instance after a trap or
 watchdog timeout rather than read a partial projection.
 
-## OPFS adapter in verification (#365)
+## OPFS adapter and browser evidence (#365, merged)
 
 `ratio_store::opfs::OpfsStore` is wasm-only and requires an explicit host
 binding. Each namespace uses an append-only protobuf object-frame file under

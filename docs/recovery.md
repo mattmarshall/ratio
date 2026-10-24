@@ -386,3 +386,13 @@ book. Reconcile replay and revoked memberships before resume. The accepted
 synthetic drill proves neither this future split nor real provider-token
 resumption; broker-specific objectives, retention and named operators must be
 agreed and measured before deployment.
+
+## Adopted tiering and remaining operating gates (#367)
+
+The owner adopted [on-device Personal and hosted SQL](storage-backends.md).
+The accepted S3 representative contract remains the proved recovery scope.
+Before hosted Postgres or the broker becomes operational, agree and measure
+its own backup/restore objectives, retention, operator and verifier. Device
+backup-key custody, loss/restore and physical iOS journal replay remain
+unproved. Tier adoption does not turn local capacity or simulator evidence
+into an operational recovery guarantee.

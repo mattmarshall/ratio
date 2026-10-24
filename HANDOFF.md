@@ -1,5 +1,12 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
+October 24, 2026 — Related: #367. The owner adopted on-device Personal with
+the limited provider broker and hosted SQL for funds/shared workspaces.
+[The decision](docs/storage-backends.md) and PLAN distinguish merged backend
+foundations from pending service/device delivery and recovery gates. All
+#357–#366 slices are complete for their recorded evidence scope. iOS #2/#3
+are complete; physical journal replay remains #1.
+
 October 24, 2026 — Related: `mattmarshall/ratio-ios#3`. The owner approved
 the linked kernel licensing PR and prohibited outside contributions to both
 repositories. [LICENSING.md](LICENSING.md) records the commercial-permission
