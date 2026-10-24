@@ -980,3 +980,44 @@ tla_check(
     tags = ["manual"],
     deps = [":durable_control"],
 )
+
+# #362: the native database claim has its own transaction/visibility model.
+tla_library(
+    name = "postgres_journal",
+    srcs = ["PostgresJournal.tla"],
+)
+
+tla_check(
+    name = "postgres_journal_check",
+    size = "medium",
+    config = "MCPostgresJournal.cfg",
+    module = "MCPostgresJournal.tla",
+    deps = [":postgres_journal"],
+)
+
+tla_check(
+    name = "postgres_overwrite_check",
+    size = "medium",
+    config = "PostgresOverwrite.cfg",
+    module = "PostgresOverwrite.tla",
+    deps = [":postgres_journal"],
+    tags = ["manual"],
+)
+
+tla_check(
+    name = "postgres_early_ack_check",
+    size = "medium",
+    config = "PostgresEarlyAck.cfg",
+    module = "PostgresEarlyAck.tla",
+    deps = [":postgres_journal"],
+    tags = ["manual"],
+)
+
+tla_check(
+    name = "postgres_dirty_read_check",
+    size = "medium",
+    config = "PostgresDirtyRead.cfg",
+    module = "PostgresDirtyRead.tla",
+    deps = [":postgres_journal"],
+    tags = ["manual"],
+)

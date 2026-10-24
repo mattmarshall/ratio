@@ -1731,3 +1731,11 @@ live PostgreSQL 16 projection tests (1.06 seconds), including stale-watermark
 and replaced-journal refusal, HIFO relief, replay digest equivalence, and
 atomic snapshot replacement without double counting. SQL unit tests and the
 expected-failure TLA probe gate passed. Final PR CI remains the merge gate.
+
+## Postgres journal proof first — October 23 (#362, partial)
+
+See docs/postgres-journal-proof.md. The transaction model and all 45 named
+failure probes passed their expected outcomes before any native journal code.
+Unique-key claim, commit-before-ack, and committed-only reads are independent
+load-bearing assumptions. A database scan must preserve missing-key refusal.
+The real client, backend fixture, cold-fold comparison, and #361 merge remain.

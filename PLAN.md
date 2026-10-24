@@ -5655,3 +5655,15 @@ live PostgreSQL 16 projection tests (1.06 seconds), including stale-watermark
 and replaced-journal refusal, HIFO relief, replay digest equivalence, and
 atomic snapshot replacement without double counting. SQL unit tests and the
 expected-failure TLA probe gate passed. Final PR CI remains the merge gate.
+
+### October 23 — proof before the Postgres journal (#362, partial)
+
+The accepted representative recovery and live #357–#360 conformance gates have
+passed and merged. The owner's goal explicitly authorizes the next hosted
+storage slice, superseding the historical deferred-customer-path start gate.
+A separate PostgresJournal model checks private inserts, commit/abort,
+unique-key claims, and committed-prefix reads. Its positive check passed;
+three probes fail for lost-write or dirty-read invariants. The full sweep
+ran 45 probes, all red for their named reasons. No native journal code exists
+in this proof commit. #361's merge, implementation/client repin, live fixture,
+and equal-height cold-fold measurement remain before #362 can be complete.
