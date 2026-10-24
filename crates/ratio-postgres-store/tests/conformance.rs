@@ -64,6 +64,38 @@ fn the_native_backend_passes_the_registered_fixture_and_atomic_claims() -> Resul
         winners.len() == 1 && alpha.get("race")? == Some(winners[0].1.clone()),
         "conditional transaction lost an acknowledged writer"
     );
+    let peer = Arc::new(PgStore::connect_local(&url, &schema, "alpha")?);
+    let barrier = Arc::new(Barrier::new(2));
+    let workers = [
+        (alpha.clone(), b"append-first".to_vec()),
+        (peer, b"append-second".to_vec()),
+    ]
+    .into_iter()
+    .map(|(store, body)| {
+        let barrier = barrier.clone();
+        std::thread::spawn(move || {
+            barrier.wait();
+            let log = SeqLog::new(store, "append-race/");
+            (log.append(&body).unwrap(), body)
+        })
+    })
+    .collect::<Vec<_>>();
+    let acknowledged = workers
+        .into_iter()
+        .map(|w| w.join().unwrap())
+        .collect::<Vec<_>>();
+    ensure!(
+        acknowledged[0].0 != acknowledged[1].0,
+        "append race reused a slot"
+    );
+    let log = SeqLog::new(alpha.clone(), "append-race/");
+    for (seq, body) in acknowledged {
+        ensure!(log.get(seq)? == Some(body), "acknowledged append lost");
+    }
+    ensure!(
+        log.for_each_since(0, &mut |_, _| Ok(()))? == 2,
+        "append race left a hole"
+    );
     for plane in [
         "journal",
         "deliveries",
@@ -139,6 +171,18 @@ fn the_native_backend_passes_the_registered_fixture_and_atomic_claims() -> Resul
     ensure!(
         PgStore::connect_local("postgres://ratio@192.0.2.1/db", &schema, "refused").is_err(),
         "non-TLS remote silently allowed"
+    );
+    let error = PgStore::connect_local(
+        "host=localhost hostaddr=192.0.2.1 connect_timeout=1 user=ratio",
+        &schema,
+        "refused",
+    )
+    .err()
+    .unwrap()
+    .to_string();
+    ensure!(
+        error.contains("loopback host address"),
+        "hostaddr bypassed local connection boundary: {error}"
     );
     eprintln!("native_pg_conformance journal_prefixes=4 side_planes=6 claim_winners=1 gap_planes=7 namespaces=2 passed");
     Ok(())

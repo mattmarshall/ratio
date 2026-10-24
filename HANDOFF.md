@@ -1748,3 +1748,8 @@ would restore one get per journal entry. SeqLog checks contiguity independently
 of the optimized scan. The native fixture is an explicitly required live CI
 target; a machine without PostgreSQL can run the hermetic gate, but cannot
 claim the native adapter passed without its live target.
+
+The final #362 native fixture also races two SeqLog appenders on independent
+connections: both acknowledgements remain at distinct contiguous slots. The
+loopback-only connector checks explicit host addresses as well as hostnames,
+so hostaddr cannot silently route its plaintext proof connection remotely.

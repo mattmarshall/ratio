@@ -22,6 +22,13 @@ impl PgStore {
             !config.get_hosts().is_empty(),
             "an explicit loopback host is required"
         );
+        ensure!(
+            config
+                .get_hostaddrs()
+                .iter()
+                .all(std::net::IpAddr::is_loopback),
+            "connect_local requires a loopback host address"
+        );
         for host in config.get_hosts() {
             match host {
                 postgres::config::Host::Tcp(host) if matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1") => (),
