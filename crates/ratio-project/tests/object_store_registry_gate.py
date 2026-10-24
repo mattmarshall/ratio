@@ -17,6 +17,11 @@ EXPECTED = {
     ("crates/ratio/src/height_live.rs", "Listed"),
     # Test-only doubles also belong here: a new implementation must be
     # classified explicitly instead of disappearing after a cfg(test) marker.
+    # Existing #300 fail-closed and #358 direct-height regression doubles.
+    ("crates/ratio-store/src/changes.rs", "UnavailableStore"),
+    ("crates/ratio-store/src/proposals.rs", "UnavailableStore"),
+    ("crates/ratio-store/src/reports.rs", "UnavailableStore"),
+    ("crates/ratio-store/src/objects.rs", "MaxOnlyStore"),
     ("crates/ratio-store/src/lib.rs", "CountingStore"),
     ("crates/ratio-store/src/lib.rs", "DelayedGetStore"),
     ("crates/ratio-store/src/control.rs", "FaultStore"),
