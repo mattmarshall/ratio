@@ -1790,3 +1790,35 @@ it did not run. Sanitized measurement/proof evidence was retained instead.
 The GitHub project is available in the signed-in in-app browser: #357–#362
 already show Done, and #363 was updated from Blocked to In progress. A CLI
 project-token refresh is no longer needed for these UI updates.
+
+## October 24 — wasm core in progress (#364)
+
+#363 merged as `4bd4cae44a63d548dcde3385688a77b647ab58cb`; required CI passed.
+The next ordered slice builds the same Console/core for wasm32 with message-only
+protobuf generation. A filesystem-free object-backed FileBook uses the existing
+state/append protocols without local cache publication. Native JSONL and wasm
+run the reusable fixture and compare all bytes, six planes, four prefix pins,
+and figures; conditional overwrite and gap refusals execute in wasm too.
+Instrumentation uses a host monotonic nanosecond import; accounting dates and
+figures remain journal/configuration decisions. The 1 GiB linear-memory profile
+needs measured one/two-view ceilings before #364 completion. Browser OPFS and
+transport/authorization are separate #365 work; no browser product is claimed.
+
+The [capacity report](docs/wasm-capacity.md) now records exact successful and
+refusing adjacent heights for both views, all peak linear-memory allocations,
+and larger-memory controls. Eight protobuf measurements, decoded text, and
+logs are retained in-tree. The actual wasm link action was inspected: wasm32
+target, no tonic/tokio/AWS runtime rlibs. Native storage/Console/projection,
+schema, and optimized wasm runtime checks passed locally. The paired iPhone
+still reports tunnel unavailable and no DDI services; no physical run is
+claimed. PR #387 remains the issue-specific review and final CI gate.
+
+The extended address-space probe found a real failure: at exactly 4 GiB,
+two-view cleanup did not return after the final validation callback. The first
+attempt was sampled/stopped; the bounded repeat recorded a 180,004 ms timeout.
+Its cause is not diagnosed. A page below that cap, successful and refusing
+adjacent heights were verified for both views. Keep the default at 1 GiB,
+discard trapped/timed-out instances, and never treat progress as a figure.
+The report now separates peak linear allocation from macOS peak physical
+footprint, not RSS, retaining original child measurements and raw counters.
+All 25 canonical records and four footprint child records are preserved.

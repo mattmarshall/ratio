@@ -5737,3 +5737,33 @@ minor-unit trial balance in 6,630 ms. A conflicting cache refused unchanged,
 was explicitly quarantined, and fresh-cache recovery succeeded. Evidence-only
 protobuf/log/proof archive readback matched under seven-day GOVERNANCE retention.
 No raw-object backup copy is claimed. Final PR CI remains the merge gate.
+
+### October 24 — wasm target and runtime gate (#364, in progress)
+
+The pinned Bazel graph selects message-only prost for wasm32 while native gRPC
+keeps tonic. A cacheless FileBook door uses the established immutable metadata
+revision protocol and refuses a nonempty journal with missing metadata.
+The runtime gate compares the existing native JSONL fixture against wasm,
+including every journal and plane byte, four digest pins, and figures.
+Capacity measurement uses 10,000 securities and one or two recorded views,
+a fresh optimized module, and a declared 1 GiB linear-memory limit. Its
+peak allocation and failure-height evidence remain required. Existing Lean
+and TLA figure/claim semantics are reused; no arithmetic is reimplemented.
+
+**wasm core conformance** is the #364 Built phrase. The optimized 1 GiB profile
+returned exact lot counts and positions at 20,486,308 entries (one view) and
+10,246,267 (two views), then refused the next entry in fresh instances. Peak
+linear memory was 1,073,741,824 and 1,073,676,288 bytes; these are not RSS or
+universal browser limits. Identical-source 2 GiB controls passed the formerly
+refusing heights, identifying allocation pressure rather than an accounting
+assertion. The [report and eight retained protobuf measurements](docs/wasm-capacity.md)
+name source revisions, module hashes, runtime, and shape. Required final CI is
+the merge gate; browser storage/application transport remains separate work.
+
+Extended verification measured the near-address-space boundary at 4 GiB minus
+one page: 81,926,356 / 40,966,350 entries for one/two views, with adjacent
+refusals. Exact 4 GiB produced a non-returning two-view cleanup; the failure
+and watchdog repeat are retained and that diagnostic profile is unsupported.
+The default remains 1 GiB. Peak physical footprint at its fitting boundaries
+was 981,079,368 / 1,031,656,704 bytes, measured by the macOS peak-footprint
+counter separately from linear allocation. RSS is not substituted.

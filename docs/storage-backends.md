@@ -565,3 +565,28 @@ The loopback-only proof connector refuses remote plaintext; hosted callers
 must supply a TLS-connected native client. Postgres backup/DR and a hosted
 service are separate operational evidence, not inherited from the accepted
 S3 representative recovery drill.
+
+## Wasm preparation (#364, in progress)
+
+`FileBook::on_store` binds an explicit object store and book ID without touching
+a filesystem cache. It shares journal, plane, configuration, and promotion
+logic with native books; missing metadata for a nonempty journal refuses.
+The existing cache-backed doors retain their verified-cache refusal.
+`//crates/ratio-project:wasm_conformance_test` builds a wasm module with the
+complete Console dependency graph, then runs the reusable fixture against
+native JSONL. The host runner needs Node.js on PATH; there is no console
+JavaScript build inside Bazel. The module imports only instrumentation clock
+and test progress functions. Browser durable storage awaits #365.
+
+The [measured wasm ceiling](wasm-capacity.md) includes one/two-view adjacent
+height verification and larger-memory controls. Peak allocated linear memory,
+source/module pins, and shape are recorded; native RSS estimates are not
+substituted. The 1 GiB profile is explicit and does not claim a browser-wide
+or total-device-memory guarantee.
+
+The footprint supplement records macOS peak physical footprint independently
+of linear allocation. The exact-4-GiB diagnostic exposed a non-returning
+two-view cleanup; its failure is preserved and that profile is unsupported.
+The default 1 GiB module and page-below-address-limit diagnostic have verified
+success/refusal boundaries. The host must discard an instance after a trap or
+watchdog timeout rather than read a partial projection.

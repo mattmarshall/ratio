@@ -1,0 +1,11 @@
+kernel_revision: "68f44f17d2edb300f47df8789723bb93a6cfd94a"
+module_sha256: "471dded95d8c54ce12c68fa008c51b419d843281e5725ad989f98946d304d5c5"
+runtime_version: "v26.8.2; V8 14.6.202.34-node.28"
+requested_height: 150000000
+view_count: 1
+completed_height: 81926356
+peak_linear_memory_bytes: 4294574080
+linear_memory_limit_bytes: 4294901760
+failure: "RuntimeError: unreachable"
+elapsed_milliseconds: 194542
+security_count: 10000

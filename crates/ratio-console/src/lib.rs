@@ -184,7 +184,7 @@ pub struct Console {
     /// One authenticated public operation may finish inside this bounded
     /// window after its fresh membership read. A later request receives a new
     /// Console and a new membership snapshot; this deadline is never renewed.
-    authorization_deadline: Option<std::time::Instant>,
+    authorization_deadline: Option<ratio_common::clock::Instant>,
     objects: Option<std::sync::Arc<dyn ratio_store::ObjectStore>>,
     book_objects: Option<std::collections::BTreeMap<String, std::sync::Arc<dyn ratio_store::ObjectStore>>>,
     /// The network server sets this only after its startup hydrate gate is
@@ -329,7 +329,7 @@ impl Console {
         subject: Subject,
     ) -> Self {
         let authorization_deadline = matches!(subject, Subject::Member { .. })
-            .then(|| std::time::Instant::now() + std::time::Duration::from_secs(25));
+            .then(|| ratio_common::clock::Instant::now() + std::time::Duration::from_secs(25));
         Console {
             root,
             max_entries: std::env::var("RATIO_MAX_API_ENTRIES")
@@ -428,7 +428,7 @@ impl Console {
     fn ensure_authorization_live(&self) -> Result<()> {
         ensure!(
             self.authorization_deadline
-                .map_or(true, |deadline| std::time::Instant::now() <= deadline),
+                .map_or(true, |deadline| ratio_common::clock::Instant::now() <= deadline),
             "the bounded authorization window expired; begin a new request"
         );
         Ok(())
@@ -6602,7 +6602,7 @@ fn nav_from(
             Some(AccountTypeRecord::Asset) | Some(AccountTypeRecord::Liability)
         )
     };
-    let struck_at = std::time::Instant::now();
+    let struck_at = ratio_common::clock::Instant::now();
     let nav = proj.nav(view, &is_asset_or_liability, rates)?.value.0;
     Ok((nav, struck_at.elapsed()))
 }
@@ -7322,7 +7322,7 @@ mod tests {
         std::fs::write(root.join("MEMBERSHIP.tsv"), "user_a\ta\n").unwrap();
         let mut console = Console::scoped(&root, member("user_a", "a@x.test", ""));
         console.authorization_deadline =
-            Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
+            Some(ratio_common::clock::Instant::now() - std::time::Duration::from_secs(1));
         let error = console.get_book("books/a").unwrap_err().to_string();
         assert!(error.contains("authorization window expired"), "{error}");
     }

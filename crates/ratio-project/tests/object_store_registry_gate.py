@@ -7,6 +7,9 @@ import sys
 
 
 EXPECTED = {
+    # Read-only synthetic journal for wasm capacity measurement; metadata
+    # delegates to MemoryStore, with no production write adapter.
+    ("crates/ratio-project/tests/wasm_conformance.rs", "GeneratedJournal"),
     ("crates/ratio-store/src/objects.rs", "Arc"),
     ("crates/ratio-store/src/objects.rs", "MemoryStore"),
     ("crates/ratio-store/src/objects.rs", "DirStore"),

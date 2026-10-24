@@ -27,7 +27,7 @@
 
 use anyhow::{Context, Result};
 use std::path::Path;
-use std::time::Instant;
+use ratio_common::clock::Instant;
 
 pub use crate::generated::{
     action_cost, capital_cost, factor_action_cost, factor_nav_cost, fx_cost, lots, mark_cost,

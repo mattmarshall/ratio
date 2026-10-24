@@ -1,0 +1,13 @@
+kernel_revision: "93005fa2ed8ff3d1ab104bcbf5d62e7d193b6786"
+module_sha256: "471dded95d8c54ce12c68fa008c51b419d843281e5725ad989f98946d304d5c5"
+runtime_version: "v26.8.2; V8 14.6.202.34-node.28"
+requested_height: 81926356
+view_count: 1
+completed_height: 81926356
+peak_linear_memory_bytes: 4294574080
+linear_memory_limit_bytes: 4294901760
+returned_figures: true
+elapsed_milliseconds: 192283
+security_count: 10000
+peak_physical_footprint_bytes: 3582336344
+physical_footprint_method: "macOS /usr/bin/time -l: peak memory footprint (bytes), not RSS"

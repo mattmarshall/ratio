@@ -1,5 +1,24 @@
 # Ratio — current state
 
+October 24 storage update: #357–#363 are merged and complete for their recorded
+evidence scope. #363's [required CI](https://github.com/mattmarshall/ratio/actions/runs/40061255498)
+and [post-merge deployment/smoke](https://github.com/mattmarshall/ratio/actions/runs/40062112547)
+passed. The next slice adds **wasm core conformance**: the same native fixture
+matches actual wasm bytes, all plane/digest pins, and figures. Its measured
+1 GiB linear-memory ceiling is 20,486,308 entries for one recorded view and
+10,246,267 for two at the tested 10,000-security shape. Adjacent entries refuse;
+larger-memory controls pass. See [measurement and limits](wasm-capacity.md).
+Final #364 CI remains the merge gate. OPFS ownership/reload proof (#365) and
+the approved limited broker scope (#366) follow in order. Physical iOS
+execution and the separate kernel contribution-policy decision remain open.
+
+The wasm report also records actual peak physical footprint (981,079,368 /
+1,031,656,704 bytes for the one/two-view 1 GiB boundaries), separate from
+linear allocation and RSS. A page-below-4-GiB diagnostic fits 81,926,356 /
+40,966,350 entries, with the next entry refusing. The exact-4-GiB two-view
+diagnostic did not return after post-fold validation; its timed-out evidence
+is retained and that profile is unsupported. The default stays at 1 GiB.
+
 Deployment dependency authentication (#382, October 23): the workflow logs
 into ECR Public before pulling the Lambda adapter, separately from its private
 ECR push login. The versioned bootstrap adds the required two token actions.

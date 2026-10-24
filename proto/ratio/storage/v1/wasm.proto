@@ -1,0 +1,23 @@
+syntax = "proto3";
+package ratio.storage.v1;
+option java_multiple_files = true;
+option java_package = "build.marsh.ratio.storage.v1";
+option java_outer_classname = "WasmProto";
+
+// One fresh-instance capacity measurement of a compiled wasm module.
+message WasmFoldMeasurement {
+  string kernel_revision = 1;
+  string module_sha256 = 2;
+  string runtime_version = 3;
+  int64 requested_height = 4;
+  int32 view_count = 5;
+  int64 completed_height = 6;
+  int64 peak_linear_memory_bytes = 7;
+  int64 linear_memory_limit_bytes = 8;
+  bool returned_figures = 9;
+  string failure = 10;
+  int64 elapsed_milliseconds = 11;
+  int32 security_count = 12;
+  int64 peak_physical_footprint_bytes = 13;
+  string physical_footprint_method = 14;
+}

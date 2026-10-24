@@ -1,0 +1,21 @@
+completed 0 linear_memory_bytes 1245184
+completed 1000000 linear_memory_bytes 89325568
+completed 2000000 linear_memory_bytes 171245568
+completed 3000000 linear_memory_bytes 335085568
+completed 4000000 linear_memory_bytes 335085568
+completed 5000000 linear_memory_bytes 335085568
+completed 6000000 linear_memory_bytes 662896640
+completed 7000000 linear_memory_bytes 662896640
+completed 8000000 linear_memory_bytes 662896640
+completed 9000000 linear_memory_bytes 662896640
+completed 10000000 linear_memory_bytes 662896640
+{
+  requested: 10246267,
+  views: 2,
+  completed: 10246267,
+  peak: 1073676288,
+  limit: 1073741824,
+  returned: true,
+  failure: '',
+  elapsedMilliseconds: 34843
+}

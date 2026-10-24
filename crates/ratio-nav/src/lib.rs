@@ -543,7 +543,7 @@ pub fn shape_of(
 /// change what it measured.
 fn refold_with_store(book_path: &std::path::Path, s: &Strike,
     store: Option<Arc<dyn ObjectStore>>) -> Result<(Replay, explain::Measured)> {
-    let setup = std::time::Instant::now();
+    let setup = ratio_common::clock::Instant::now();
     let book = FileBook::open_with(book_path, store)?;
 
     // ⛔ ONE WALK, AND ONLY THE PREFIX IS FOLDED. This read the whole journal
@@ -564,7 +564,7 @@ fn refold_with_store(book_path: &std::path::Path, s: &Strike,
     let mut hash = ratio_store::DigestBuilder::new();
     let mut seen = 0usize;
     let mut folded = 0i64;
-    let walk = std::time::Instant::now();
+    let walk = ratio_common::clock::Instant::now();
     book.for_each_entry_since(0, &mut |e| {
         if seen < s.journal_position {
             fold.consider(&book, e);
@@ -601,7 +601,7 @@ fn refold_with_store(book_path: &std::path::Path, s: &Strike,
         ));
     }
 
-    let finish = std::time::Instant::now();
+    let finish = ratio_common::clock::Instant::now();
     let digest = hash.finish().as_str().to_string();
     let (nav, tb) = fold.finish()?;
     m.finish_nanos = finish.elapsed().as_nanos() as i64;

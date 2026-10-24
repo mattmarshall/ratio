@@ -347,3 +347,13 @@ a deployed Postgres recovery RPO/RTO, retention, TLS identity, backup, or restor
 from the local cold-fold comparison. The current recovery CLI supports directory
 and S3 locations; selecting the native adapter for operational export requires
 an explicit integration and a separately measured recovery procedure.
+
+## Filesystem-free handles (#364 preparation)
+
+An explicit `FileBook::on_store` handle treats the selected object namespace as
+authoritative and publishes no local cache. Its chart/configuration/history
+remain the #363 immutable metadata protocol; a nonempty journal without that
+metadata refuses. This adds no backup, retention, identity, credential-custody,
+or browser-storage guarantee. Those remain properties of the selected backend
+and its verified operational procedure. Native cached and no-store layouts
+retain their existing recovery behavior.

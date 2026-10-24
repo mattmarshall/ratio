@@ -1265,6 +1265,7 @@ pub trait Journal {
 /// refuses it.
 pub struct FileBook {
     root: PathBuf,
+    cache: bool,
     /// When set, the journal and the append-only planes are one object per
     /// entry on this store, not `journal.jsonl` on disk. `/tmp` is still
     /// where the seeded chart and config live; it is no longer the system
@@ -1336,6 +1337,18 @@ impl Plane {
 }
 
 impl FileBook {
+    /// Bind an object-backed book without a filesystem cache. The caller owns
+    /// backend durability and namespace isolation; all figure and append logic
+    /// is shared with the native FileBook.
+    pub fn on_store(book_id: &str, objects: Arc<dyn ObjectStore>) -> Result<Self> {
+        let state = file_state::StateStore::new(objects.clone(), book_id)?.without_cache();
+        let bootstrap = if bootstrap::valid_book_id(book_id) {
+            bootstrap::BootstrapStore::new(objects.clone()).get(book_id)?.map(|(_, state)| state)
+        } else { None };
+        if bootstrap.is_none() { state.attach(Path::new(""))?; }
+        Ok(Self { root: PathBuf::from(book_id), cache: false,
+            objects: Some((objects, book_id.into())), bootstrap })
+    }
     /// Open a book, creating the layout if it is not there.
     ///
     /// This convenience door is local-only. A caller selecting durable storage
@@ -1421,7 +1434,7 @@ impl FileBook {
         fs::create_dir_all(root.join("config"))
             .with_context(|| format!("creating book at {}", root.display()))?;
         let objects = store.map(|s| (s, book_key(&root)));
-        let book = FileBook { root, objects, bootstrap: bootstrap.map(|(_, state)| state) };
+        let book = FileBook { root, cache: true, objects, bootstrap: bootstrap.map(|(_, state)| state) };
         // A published book never hydrates a baked seed into its journal.
         if book.bootstrap.is_none() && hydrate_legacy_seed { book.hydrate_objects()?; }
         Ok(book)
@@ -1429,8 +1442,10 @@ impl FileBook {
 
     fn file_state_store(&self) -> Result<Option<file_state::StateStore>> {
         if self.bootstrap.is_some() { return Ok(None); }
-        self.objects.as_ref().map(|(objects, id)|
-            file_state::StateStore::new(objects.clone(), id)).transpose()
+        self.objects.as_ref().map(|(objects, id)| {
+            let state = file_state::StateStore::new(objects.clone(), id)?;
+            Ok(if self.cache { state } else { state.without_cache() })
+        }).transpose()
     }
 
     fn journal_log(&self) -> Option<SeqLog> {

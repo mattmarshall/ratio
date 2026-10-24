@@ -1,0 +1,8 @@
+completed 0 linear_memory_bytes 1245184
+{
+  completed: '40966351',
+  peak: '4294967296',
+  failure: 'watchdog timeout: kernel call did not return figures',
+  returned: false,
+  elapsedMilliseconds: 180004
+}
