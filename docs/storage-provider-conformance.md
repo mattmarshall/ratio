@@ -211,3 +211,18 @@ Archives in the approved encrypted, versioned, seven-day GOVERNANCE backup:
 Both readbacks matched SHA-256 and retention metadata. This is synthetic
 provider isolation evidence, distinct from the MemoryStore/DirStore test and
 from cross-account DR or a deployed hosted routing product.
+
+Single-backend CLI compatibility source `3646e48485ef82dc51207bfa9c7fad90d004ef70`
+read alpha with `RATIO_JOURNAL_BUCKET`/prefix and beta with
+`RATIO_JOURNAL_LOCAL`; unset refused both published books instead of local
+fallback. The hermetic CLI test also compares configured and unset generated
+book figures and checks their actual journal locations. Its first run used
+an incorrect `--lots` fixture flag; after correcting it to `--lots-per`,
+the storage refusal and positive location checks passed.
+`evidence/provider-360-startup.zip` SHA-256:
+`7faf823ba9e22834e828a032617cb1fce56ad9201519ef571a0a564e533c3c9a`.
+
+The #360 source audit corrected missed generator, kind initialization, and
+Console NAV lookup bindings before acceptance. No amount-deciding behavior
+changed. Local Console, API, MCP, generator, NAV, recovery, and mandatory
+backend gates passed; final PR CI is the merge gate.

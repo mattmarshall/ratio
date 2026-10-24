@@ -314,8 +314,8 @@ so backup access control and retention protection are still operator decisions.
   accepted by the named verifier; see [the measured report](recovery-drill-2026-10-23.md).
 - [#360](https://github.com/mattmarshall/ratio/issues/360): explicit
   book-scoped handles reach CLI, watch, API, MCP, projection, and NAV paths.
-  `FileBook::open` and Console constructors are local-only. Live two-backend
-  isolation evidence remains required before this issue is complete.
+  `FileBook::open` and Console constructors are local-only. Live S3/DirStore
+  isolation and cold recovery passed; see [provider evidence](storage-provider-conformance.md).
 - No production backup scheduler or customer retention policy is established
   by this inventory. The S3 template configures encryption and prevents public
   access; it does not declare versioning or Object Lock on ScaleBucket.

@@ -505,8 +505,9 @@ against an in-process endpoint. It compares trial balances and every
 journal-prefix digest to the NAV digest, and includes conditional-claim,
 no-hole, checkpoint privacy, and S3Journal model tests. A source inventory
 fails the build when a new ObjectStore implementation is not registered for
-conformance. The full fixture has not been run against live S3; do not treat
-the gate as provider acceptance or as proof of customer recovery.
+conformance. October 23: the identical fixture passed live S3 in merged
+PR #379; see [the provider report](storage-provider-conformance.md). The
+hermetic gate remains distinct from live evidence and customer recovery.
 ### October 2, 2026 per-book routing note (#360, branch-local)
 
 An explicit console map selects an `ObjectStore` by book ID. Cold
@@ -517,5 +518,8 @@ API, MCP, projection, and NAV entry points pass explicit handles.
 points, and storage side-plane convenience functions are local-only. Only
 the binary owns the startup singleton. The two-book test now checks isolated
 audit writes and NAV reads after cold recovery; MCP proposal writes use the
-selected store. The server still selects one store at startup, so hosted
-provider routing and recovery evidence remain open.
+selected store. October 23: live S3/DirStore seed and separate-process cold
+recovery passed, including Console NAV replay and foreign membership refusal.
+Configured S3 and DirStore CLI reads passed; unset refused durable publication
+markers. Hosted routing deployment remains future product work, separate
+from #360's explicit library routing acceptance.
