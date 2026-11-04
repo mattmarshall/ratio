@@ -41,7 +41,7 @@ bazel_dep(name = "rules_tla", version = "0.1.1")
 
 # Phase 2: the gRPC API contract + AIP lint. protobuf is a direct dep so the
 # `@protobuf//...:prefer_prebuilt_protoc` flag (in .bazelrc) resolves.
-bazel_dep(name = "rules_aip", version = "0.2.1")
+bazel_dep(name = "rules_aip", version = "0.3.1")
 bazel_dep(name = "protobuf", version = "33.4")
 bazel_dep(name = "googleapis", version = "0.0.0-20260422-20ac242a")
 
@@ -140,7 +140,7 @@ use_repo(crate, "crates")
 # proven in Lean and emitted to Rust via the vendored `Polyglot.Rust` builders
 # + `lean_emit`. Dep-free Lean core, provisioned by rules_lean's lake.workspace
 # (pinned v4.30.0-rc2 to match the polyglot emitter sources).
-bazel_dep(name = "rules_lean", version = "0.5.1")
+bazel_dep(name = "rules_lean", version = "0.7.2")
 
 lake = use_extension("@rules_lean//lean:lake.bzl", "lake")
 lake.workspace(
