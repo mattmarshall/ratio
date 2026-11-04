@@ -1243,20 +1243,6 @@ message RecognitionDifference {
   string why = 7 [(google.api.field_behavior) = OUTPUT_ONLY];
 }
 
-// How serious an exception is, which is what the queue is ordered by.
-enum Severity {
-  SEVERITY_UNSPECIFIED = 0;
-
-  // Explained and within tolerance.
-  SEVERITY_LOW = 1;
-
-  // Wants a decision, but does not stop the NAV.
-  SEVERITY_MEDIUM = 2;
-
-  // Blocks the NAV.
-  SEVERITY_HIGH = 3;
-}
-
 // One posting behind a break's figure, as the console shows it.
 //
 // NOT `ratio.v1.Posting` from ledger.proto, which is the kernel's own type: a
@@ -1414,17 +1400,6 @@ message Tolerance {
   // same distinction `lot_method_declared` keeps, after a screen reported the
   // default as a term of the agreement on funds that had agreed nothing.
   bool declared = 3 [(google.api.field_behavior) = OUTPUT_ONLY];
-}
-
-// Whether a person or a model did something.
-enum ActorKind {
-  ACTOR_KIND_UNSPECIFIED = 0;
-
-  ACTOR_KIND_PERSON = 1;
-
-  // A model. It appears in this log only ever as the author of a DRAFT — the
-  // verb that changed the books always has a person on it.
-  ACTOR_KIND_MODEL = 2;
 }
 
 // Who changed the configuration, and how.
@@ -1702,7 +1677,7 @@ message GetChangeLogEntryRequest {
 
 // A NAV, struck at a point in time and pinned to the journal that produced it.
 //
-// # What makes this more than a saved number
+// What makes this more than a saved number
 //
 // A strike records the journal POSITION it was taken at and a digest of that
 // prefix. Re-deriving it folds the same entries and must produce the identical
@@ -3372,4 +3347,29 @@ message GetPeriodCloseRequest {
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference).type = "ratio.marsh.build/PeriodClose"
   ];
+}
+
+// How serious an exception is, which is what the queue is ordered by.
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+
+  // Explained and within tolerance.
+  SEVERITY_LOW = 1;
+
+  // Wants a decision, but does not stop the NAV.
+  SEVERITY_MEDIUM = 2;
+
+  // Blocks the NAV.
+  SEVERITY_HIGH = 3;
+}
+
+// Whether a person or a model did something.
+enum ActorKind {
+  ACTOR_KIND_UNSPECIFIED = 0;
+
+  ACTOR_KIND_PERSON = 1;
+
+  // A model. It appears in this log only ever as the author of a DRAFT — the
+  // verb that changed the books always has a person on it.
+  ACTOR_KIND_MODEL = 2;
 }

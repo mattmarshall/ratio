@@ -304,8 +304,8 @@
     "https://registry.tbzl.dev/modules/re2/2023-09-01/MODULE.bazel": "not found",
     "https://registry.tbzl.dev/modules/re2/2024-07-02.bcr.1/MODULE.bazel": "not found",
     "https://registry.tbzl.dev/modules/re2/2024-07-02/MODULE.bazel": "not found",
-    "https://registry.tbzl.dev/modules/rules_aip/0.2.1/MODULE.bazel": "8f09ff10aee7304c5d19c70be0efee32133c2a342ee1fd815dacf1eb7319e747",
-    "https://registry.tbzl.dev/modules/rules_aip/0.2.1/source.json": "8aa81f57167be879e8e5003836be82de3f63ec2a3c7871532f94c368a7a1f82b",
+    "https://registry.tbzl.dev/modules/rules_aip/0.3.1/MODULE.bazel": "9c21d4799bcc652a1d7514b487907c87fb5379b68eb5dcb170529390ae96ed43",
+    "https://registry.tbzl.dev/modules/rules_aip/0.3.1/source.json": "948cdcff5461e195acc1d077655f4032b44cfb3612615408187078cd54f4c9ec",
     "https://registry.tbzl.dev/modules/rules_android/0.1.1/MODULE.bazel": "not found",
     "https://registry.tbzl.dev/modules/rules_apple/3.16.0/MODULE.bazel": "not found",
     "https://registry.tbzl.dev/modules/rules_buf/0.1.1/MODULE.bazel": "not found",
@@ -354,8 +354,8 @@
     "https://registry.tbzl.dev/modules/rules_jvm_external/6.7/MODULE.bazel": "not found",
     "https://registry.tbzl.dev/modules/rules_kotlin/1.9.0/MODULE.bazel": "not found",
     "https://registry.tbzl.dev/modules/rules_kotlin/1.9.6/MODULE.bazel": "not found",
-    "https://registry.tbzl.dev/modules/rules_lean/0.5.1/MODULE.bazel": "bf8cbdedae612917f79ddaad86379e69f7986a95ce7c1815b05b807def10ea0c",
-    "https://registry.tbzl.dev/modules/rules_lean/0.5.1/source.json": "eb23894f8afb2e1b7ce797b9533000ca5b85b519ba341857078c051dc92cb13e",
+    "https://registry.tbzl.dev/modules/rules_lean/0.7.2/MODULE.bazel": "7bc9041a744825f540dfeea40aba5faf56b4a17926b59205dd8d6828dca305b3",
+    "https://registry.tbzl.dev/modules/rules_lean/0.7.2/source.json": "9df66ca4dc242a9590f751b2a3ceccd4b3e197fe37fcc1de8a5c632e77894174",
     "https://registry.tbzl.dev/modules/rules_license/0.0.3/MODULE.bazel": "not found",
     "https://registry.tbzl.dev/modules/rules_license/0.0.7/MODULE.bazel": "not found",
     "https://registry.tbzl.dev/modules/rules_license/0.0.8/MODULE.bazel": "not found",
@@ -442,7 +442,7 @@
     "@@rules_aip+//aip:extensions.bzl%api_linter": {
       "general": {
         "bzlTransitiveDigest": "Ob/0saAO3Vf+L3Og/zBPr/tAiXbpYCLk9qta49VVvnk=",
-        "usagesDigest": "taGLgv8UxG2q3e3fHZw9/zjW11JXsSX0mEJ1RO+1CKQ=",
+        "usagesDigest": "lH5z1IviTAIRwXYNG4Dtkmq+oSOOGjzCfy/y0BSg8lU=",
         "recordedFileInputs": {},
         "recordedDirentsInputs": {},
         "envVariables": {},
@@ -673,19 +673,33 @@
     },
     "@@rules_lean+//lean:lake.bzl%lake": {
       "general": {
-        "bzlTransitiveDigest": "TSkwKKphDCoYLuQrznBpnrnmoMj4SwnnWW9GsydjB1o=",
+        "bzlTransitiveDigest": "gQFTO1x2/XssMD1SGXlpFitXyjIsOixzLcn6XE+Rbq0=",
         "usagesDigest": "GTHy0W/niYhXe+3YdRXi1oefXSrnXAlQpj1OD3BoTVk=",
-        "recordedFileInputs": {},
+        "recordedFileInputs": {
+          "@@//lean/lean-toolchain": "ce4c4e3d87434b9663f46de25ce34b48a0cf0d392e0a320a0787b4674a2d7b61"
+        },
         "recordedDirentsInputs": {},
         "envVariables": {},
         "generatedRepoSpecs": {
+          "lean_dist_4_30_0_rc2": {
+            "repoRuleId": "@@rules_lean+//lean:lake.bzl%lean_dist",
+            "attributes": {
+              "version": "v4.30.0-rc2"
+            }
+          },
           "ratio_lean_ws": {
             "repoRuleId": "@@rules_lean+//lean:lake.bzl%lake_workspace",
             "attributes": {
               "lean_toolchain": "@@//lean:lean-toolchain",
               "lakefile": "@@//lean:lakefile.lean",
               "lake_manifest": "@@//lean:lake-manifest.json",
-              "allow_source_build": false
+              "allow_source_build": false,
+              "cache_roots": [],
+              "olean_cache": "",
+              "olean_cache_packages": [],
+              "emit_imports_manifest": false,
+              "lean_dist_lake": "@@rules_lean++lake+lean_dist_4_30_0_rc2//:lean_toolchain/bin/lake",
+              "lean_dist_toolchain": "@@rules_lean++lake+lean_dist_4_30_0_rc2//:lean_toolchain"
             }
           }
         },

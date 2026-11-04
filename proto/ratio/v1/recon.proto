@@ -60,33 +60,6 @@ message Scope {
   repeated string exclusions = 4 [(google.api.field_behavior) = OPTIONAL];
 }
 
-// Why a file could not be reconciled. Every value names something the run
-// found that it does not model — never a parse failure, which is an error.
-enum Refusal {
-  REFUSAL_UNSPECIFIED = 0;
-
-  // A transaction type not in the scope's list.
-  REFUSAL_UNKNOWN_TRANSACTION_TYPE = 1;
-
-  // An amount in a currency other than the base. Modeling this needs FX rates
-  // and a translation policy, and guessing either produces false breaks.
-  REFUSAL_FOREIGN_CURRENCY = 2;
-
-  // A disposal with no cost basis given. Relieving it would require tax lots;
-  // relieving it at proceeds instead balances the entry while making the
-  // investment figure wrong — a break that looks like Ratio's fault.
-  REFUSAL_DISPOSAL_WITHOUT_BASIS = 3;
-
-  // A transaction type naming a rule the active configuration does not have.
-  // The scope claims coverage the configuration cannot deliver.
-  REFUSAL_NO_RULE_FOR_TYPE = 4;
-
-  // A holdings row whose instrument did not resolve against the master.
-  // Comparing a partial statement against the journal manufactures a break
-  // for every unmatched line — Ratio's fault, not the custodian's.
-  REFUSAL_UNIDENTIFIED_ENTITY = 5;
-}
-
 // One thing in the file that the run does not model.
 message Exception {
   // Which row, by the file's own identifier.
@@ -97,20 +70,6 @@ message Exception {
 
   // What to do about it, addressed to whoever hands over the next file.
   string detail = 3 [(google.api.field_behavior) = REQUIRED];
-}
-
-// What kind of difference this is.
-enum Cause {
-  CAUSE_UNSPECIFIED = 0;
-
-  // Both sides carry the account; the figures differ.
-  CAUSE_AMOUNT_DIFFERS = 1;
-
-  // Ratio produced a balance for an account the report does not carry.
-  CAUSE_ABSENT_FROM_REPORT = 2;
-
-  // The report carries an account Ratio produced nothing for.
-  CAUSE_ABSENT_FROM_RATIO = 3;
 }
 
 // One line of a break report: a difference between Ratio's figure and the
@@ -261,4 +220,45 @@ message ConfigComparison {
   // True when both replayed books tie. False is a defect in Ratio rather than
   // a finding: the kernel refuses a non-conserving entry.
   bool both_books_tie = 9 [(google.api.field_behavior) = OUTPUT_ONLY];
+}
+
+// Why a file could not be reconciled. Every value names something the run
+// found that it does not model — never a parse failure, which is an error.
+enum Refusal {
+  REFUSAL_UNSPECIFIED = 0;
+
+  // A transaction type not in the scope's list.
+  REFUSAL_UNKNOWN_TRANSACTION_TYPE = 1;
+
+  // An amount in a currency other than the base. Modeling this needs FX rates
+  // and a translation policy, and guessing either produces false breaks.
+  REFUSAL_FOREIGN_CURRENCY = 2;
+
+  // A disposal with no cost basis given. Relieving it would require tax lots;
+  // relieving it at proceeds instead balances the entry while making the
+  // investment figure wrong — a break that looks like Ratio's fault.
+  REFUSAL_DISPOSAL_WITHOUT_BASIS = 3;
+
+  // A transaction type naming a rule the active configuration does not have.
+  // The scope claims coverage the configuration cannot deliver.
+  REFUSAL_NO_RULE_FOR_TYPE = 4;
+
+  // A holdings row whose instrument did not resolve against the master.
+  // Comparing a partial statement against the journal manufactures a break
+  // for every unmatched line — Ratio's fault, not the custodian's.
+  REFUSAL_UNIDENTIFIED_ENTITY = 5;
+}
+
+// What kind of difference this is.
+enum Cause {
+  CAUSE_UNSPECIFIED = 0;
+
+  // Both sides carry the account; the figures differ.
+  CAUSE_AMOUNT_DIFFERS = 1;
+
+  // Ratio produced a balance for an account the report does not carry.
+  CAUSE_ABSENT_FROM_REPORT = 2;
+
+  // The report carries an account Ratio produced nothing for.
+  CAUSE_ABSENT_FROM_RATIO = 3;
 }
