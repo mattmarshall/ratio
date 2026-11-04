@@ -63,41 +63,6 @@ service Chart {
   }
 }
 
-// Which side of an account is its normal balance. Proved per account type in
-// `Ratio.Core` and emitted to the engine, so this enum and the running code are
-// the same definition.
-enum Side {
-  // Default value. This value is unused.
-  SIDE_UNSPECIFIED = 0;
-
-  // Debit — the normal side of assets and expenses.
-  SIDE_DEBIT = 1;
-
-  // Credit — the normal side of liabilities, equity and income.
-  SIDE_CREDIT = 2;
-}
-
-// The classification that determines an account's normal side.
-enum AccountType {
-  // Default value. This value is unused.
-  ACCOUNT_TYPE_UNSPECIFIED = 0;
-
-  // An asset. Normal side: debit.
-  ACCOUNT_TYPE_ASSET = 1;
-
-  // A liability. Normal side: credit.
-  ACCOUNT_TYPE_LIABILITY = 2;
-
-  // Equity. Normal side: credit.
-  ACCOUNT_TYPE_EQUITY = 3;
-
-  // Income. Normal side: credit.
-  ACCOUNT_TYPE_INCOME = 4;
-
-  // An expense. Normal side: debit.
-  ACCOUNT_TYPE_EXPENSE = 5;
-}
-
 // A named conserved dimension — what an accountant calls an account. (AIP-123)
 message Account {
   option (google.api.resource) = {
@@ -239,4 +204,39 @@ message GetTrialBalanceRequest {
     (google.api.field_behavior) = REQUIRED,
     (google.api.resource_reference) = {type: "ratio.marsh.build/TrialBalance"}
   ];
+}
+
+// Which side of an account is its normal balance. Proved per account type in
+// `Ratio.Core` and emitted to the engine, so this enum and the running code are
+// the same definition.
+enum Side {
+  // Default value. This value is unused.
+  SIDE_UNSPECIFIED = 0;
+
+  // Debit — the normal side of assets and expenses.
+  SIDE_DEBIT = 1;
+
+  // Credit — the normal side of liabilities, equity and income.
+  SIDE_CREDIT = 2;
+}
+
+// The classification that determines an account's normal side.
+enum AccountType {
+  // Default value. This value is unused.
+  ACCOUNT_TYPE_UNSPECIFIED = 0;
+
+  // An asset. Normal side: debit.
+  ACCOUNT_TYPE_ASSET = 1;
+
+  // A liability. Normal side: credit.
+  ACCOUNT_TYPE_LIABILITY = 2;
+
+  // Equity. Normal side: credit.
+  ACCOUNT_TYPE_EQUITY = 3;
+
+  // Income. Normal side: credit.
+  ACCOUNT_TYPE_INCOME = 4;
+
+  // An expense. Normal side: debit.
+  ACCOUNT_TYPE_EXPENSE = 5;
 }
