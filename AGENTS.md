@@ -1,195 +1,112 @@
-# Working on Ratio with an LLM
+# AGENTS.md — working on Ratio
 
-Replaces `CLINE.md` and `custom-instructions-for-ratio.md`, both of which
-described a different program: a Rust/Python personal-finance TUI over
-PostgreSQL, with `sqlx`, `tui-rs`, and a `specs/` directory to implement
-against. That architecture is obsolete. The journal remains the system of
-record; optional Postgres projections and Python Connect apps now exist,
-with different roles. Do not revive the old Cargo/TUI program.
+Instructions for coding agents in this repository, whatever the harness. This
+file and [`.agents/skills/`](.agents/skills/) are the only agent instructions:
+there are no vendor-specific rule files. The old `.clinerules/`, `.clineignore`,
+`CLINE.md` and `custom-instructions-for-ratio.md` described a different
+program — a Rust/Python personal-finance TUI over PostgreSQL with `sqlx`,
+`tui-rs`, PyO3 and a `specs/` directory to implement against. That
+architecture is obsolete and those files are gone. Do not revive the old
+Cargo/TUI program.
 
-Read [HANDOFF.md](HANDOFF.md) first, then its linked
-[current-state summary](docs/current-state.md). The summary records what is
-current; dated amendments preserve why it changed.
+## What Ratio is
 
-This file is rules for working on the repository with an LLM: the kernel
-rules a coding agent must not break, and how **Grok Bot track agents** plus
-**Cursor cloud agents** fan out backlog work without thrashing `main`. For
-where *production* agents sit relative to the proofs — the fence, the
-proposal plane, and what stays human — read [ORCHESTRATION.md](ORCHESTRATION.md).
-Those agents touch a fund's *book*. This section is about agents that open
-a *pull request*. Do not confuse the two.
+A double-entry accounting kernel with its core properties machine-checked. The
+book is an append-only journal of conserved postings plus content-addressed
+configuration. **Lean 4** proves the arithmetic and the lot engine, **TLA+**
+checks staleness and concurrency, and **Rust** runs it — with some of the Rust
+**emitted from the Lean**, so the theorem and the code are the same decision
+rather than two descriptions of one.
 
-## Dispatch — Grok Bot tracks and Cursor cloud agents
+One kernel serves investment funds, personal finance, project finance and
+operating businesses. A book's kind selects its chart and its screens; it is
+not a fork. The journal and configuration are files. Postgres
+(`RATIO_PG_URL`) is an optional read projection, never the book of record. The
+operations console in `console/` is Next.js on Vercel. First-party Connect
+apps in `connect/` are Python. The TUI is a stub.
 
-How the backlog fans out. This section is a contract, not a product
-feature, and it does not close any product issue.
+## Start here
 
-### Owner map
+1. **This file** — the rules that are not negotiable, and the failure shapes.
+2. **The skill for your task** (below). Each one has commands that have been
+   run, and scripts that check what they claim.
+3. **[docs/current-state.md](docs/current-state.md)** — what is true now.
+4. **[HANDOFF.md](HANDOFF.md)** — what is load-bearing and what will bite.
+   Search it for your area rather than reading all 130 KB; dated amendments
+   sit at the top.
 
-| Agent | Owns | Does not own |
-|---|---|---|
-| **Ratio** | milestone **Platform & Connect**, and the merge gate for every PR into this tree | Fund / Personal / Project milestone work |
-| **Ratio Fund** | milestone **Fund accounting** only | Platform, Personal, Project |
-| **Ratio Personal** | milestone **Personal finance** only | Platform, Fund, Project |
-| **Ratio Project** | milestone **Project finance** only | Platform, Fund, Personal |
-| **Ratio iOS** | the [`mattmarshall/ratio-ios`](https://github.com/mattmarshall/ratio-ios) repository — the SwiftUI shell, its bridge, and its build | The kernel, the journal format, any amount-deciding behavior, and every milestone in this tree |
+Not working in this tree? The iOS shell is
+[`mattmarshall/ratio-ios`](https://github.com/mattmarshall/ratio-ios), and
+agents that act on a fund's *book* (not on this repository) are
+[ORCHESTRATION.md](ORCHESTRATION.md). Do not confuse the two.
 
-A track agent that picks an issue outside its milestone is the claim that
-fails: the labels already named the owner, and crossing them puts two
-authors on `PLAN.md` for no reason.
+## Skills
 
-⛔ **Ratio iOS does not change an amount.** The shell consumes a pinned
-kernel revision. A change to the lot engine, the projection, the journal
-format, or anything emitted from Lean is a PR into *this* tree under
-Platform & Connect — never a patch in the shell. A kernel forked into
-`ratio-ios` is the exact failure that row exists to prevent, and it would
-arrive looking like a local fix to an iOS bug.
+In [`.agents/skills/`](.agents/skills/), in the Agent Skills format (a
+`SKILL.md` with `name` and `description` frontmatter, plus `scripts/`).
 
-### Dispatch unit
-
-**One GitHub issue → one cloud agent → one PR.**
-
-⛔ Never assign a whole milestone to one agent. A milestone is a queue,
-not a prompt. The failure mode is one agent touching every file the
-other two need, then a merge that rewrites someone else's Built
-honesty.
-
-### Labels
-
-Pick only issues labelled `status:ready`. That label means the
-dependency is met and a cloud agent is safe to dispatch.
-
-| Label | Use |
+| Skill | Use it to |
 |---|---|
-| `status:ready` | deps met — the only issues a track agent may start |
-| `status:in-flight` | a cloud agent is assigned, or a PR is open |
-| `status:blocked` | waiting on a dependency or a decision — do not dispatch |
-| `track:*` | `fund` · `personal` · `project` · `platform` · `ecosystem` |
-| `layer:core` · `layer:console` · `layer:connect` | where the work lives |
-| `kind:*` | `investment` · `personal` · `project` · `operating` — BookKind, not a product fork |
+| [`build-and-test`](.agents/skills/build-and-test/SKILL.md) | build with Bazel, run only the tests your change affects (`scripts/affected-tests.sh`), match CI, read results, and find what `bazel test //...` does not cover |
+| [`restricted-network-bazel`](.agents/skills/restricted-network-bazel/SKILL.md) | fix `403 Forbidden` on GitHub archive downloads in a sandbox (`scripts/override_github_archives.py`) — usually the first thing a cloud container needs |
+| [`run-ratio`](.agents/skills/run-ratio/SKILL.md) | drive the CLI and the gRPC/REST server on a real book, smoke-test the binary (`scripts/smoke.sh`), seed the nine demo books |
+| [`proofs`](.agents/skills/proofs/SKILL.md) | add or change a Lean proof or a TLA+ spec and its probes; count states with `scripts/tlc.sh` |
+| [`console`](.agents/skills/console/SKILL.md) | work on the Next.js console, which Bazel does not build; run its contract checks (`scripts/contract-checks.sh`) |
+| [`ship-a-change`](.agents/skills/ship-a-change/SKILL.md) | commit, write a PR or merge message that passes the issue-closure check, keep PLAN/HANDOFF honest, merge |
+| [`backlog-dispatch`](.agents/skills/backlog-dispatch/SKILL.md) | pick, dispatch or relabel a backlog issue: the owner map, one issue → one agent → one PR, labels, concurrency |
 
-Flip `status:ready` → `status:in-flight` when the cloud agent starts.
-Leave `status:blocked` alone until the named dependency lands; then a
-person (or the track agent that owns the dependency) marks `ready`.
+Quick reference, if nothing else:
 
-### Concurrency
+```bash
+bazel test //...                                              # the whole Bazel gate
+.agents/skills/build-and-test/scripts/affected-tests.sh       # just what your change touches
+.agents/skills/run-ratio/scripts/smoke.sh                     # the binary, end to end
+```
 
-**At most two or three concurrent cloud agents on this repository.**
-`PLAN.md`, `HANDOFF.md`, and `site/roadmap.src.html` are on almost every
-engine PR, so a fourth agent is a conflict factory, not throughput.
+## Repository map
 
-Work that lives in a **separate tree or repo** can run wider — Connect
-apps, and the iOS shell in `mattmarshall/ratio-ios`. They do not share
-those three files, so they are not the conflict this cap is about.
-
-Work that stays in *this* tree still counts against the two-to-three cap,
-including a Connect-layer issue that edits PLAN, and including the
-kernel-side half of an iOS slice. ⚠ A two-repo slice is still one issue
-and one agent; it is not a license to open a PR in each tree and let the
-pinned revision drift between them.
-
-### PR rules
-
-- **Batch PLAN / roadmap Built honesty into the engine PR.** The
-  amendment that records what landed belongs in the same commit as the
-  landing. A follow-up "docs only" PR is how the site stays ahead of
-  the product — the risk PLAN.md already named.
-- **State leftovers explicitly.** What a walk-through still cannot show
-  stays named on the issue it belongs to.
-- **Use `Related: #N` and `Remaining work: #N — <gap>` for partial work.**
-  A negation before a closing keyword does not prevent GitHub auto-closure.
-  Reserve closing keywords for a standalone completion line only after the
-  entire issue meets acceptance. Follow the [merge check](docs/issue-completion.md)
-  for the PR body, commit messages, and final merge message.
-- ⛔ **Never invent a `Method` / `Order` / `lot_method` variant** for
-  MinTax, SpecID, average cost, or wash. Each is an election with its
-  own shape (`min_tax_short_weight`, `identified_lots`, `average_cost`,
-  `wash_window_days` / `wash_keep_holding_period`). The TLA probes that
-  treat them as a Method exist so that mistake goes red. HANDOFF.md
-  records why.
-
-### Core vs Connect
-
-[#150](https://github.com/mattmarshall/ratio/issues/150) is the scope
-catalog and the first-party extension contract. Ratio's core stays a
-thin, correct book of record. Breadth is a Connect app unless a PLAN
-amendment says otherwise.
-
-**Connect unless PLAN says core:** client / LP / vendor portals, bank
-OAuth, AIA G702/G703 pay-app packs, tax packs, EAC / forecast. The
-kernel cites the figures those apps read; it does not grow the product
-UI. `rules:approve` / `config:promote` are not scopes — the fence is
-absence, and #150 does not open it.
-
-### BookKind
-
-A Book is a journal plus content-addressed configuration. It is
-independent of Funds and WorkOS organizations: absence is independence,
-not an error. `CreateBook` writes no fund and no organization.
-
-Kind selects the chart `chart_for` writes and the chrome `screensFor`
-offers — **one list, not a binary fork of the kernel.**
-`UNSPECIFIED` is the proto default, not a domain and not a hidden fifth
-kind. Do not mint a chrome list per issue, and do not file a household
-or a job under a Fund so the old URLs keep working.
-
-### Current queue
-
-The [GitHub project](https://github.com/users/mattmarshall/projects/1) and
-[roadmap index #258](https://github.com/mattmarshall/ratio/issues/258) own the
-queue. Filter by the owning milestone and `status:ready`; phase and wave
-labels express sequencing, not permission to start blocked work. Do not
-copy a dated candidate list into an agent prompt.
-
-The September 4 A/B waves are historical: partner cuts, unit movements,
-write actors, and the multi-kind seed have landed. The Connect catalog's
-remaining tasks are separate issues. Read-only app hosting depends on that
-app's registration; write-capable apps additionally depend on the API
-allowlist. The LP portal's grant is already proven. Check the current issue
-before treating issue 22 or issue 150 as a blanket blocker.
-
----
-
-## What this actually is
-
-A fund accounting kernel. An append-only journal of conserved postings, with the
-core properties machine-checked: Lean 4 for the arithmetic and the lot engine,
-TLA+ for staleness and concurrency, Rust for the running system. Some of the
-Rust is **emitted from the Lean**, so the theorem and the code are the same
-decision rather than two descriptions of one.
-
-The journal and content-addressed configuration are files. Postgres is an
-optional read projection selected by `RATIO_PG_URL`; it is not the book of
-record. First-party Connect apps in `connect/` use Python. The authenticated
-operations console in `console/` is Next.js. The old TUI is only a stub.
+```
+lean/Ratio/      the proofs, and the Emit modules that author Rust from them
+tla/             the specs, their MC configs, and the failure-path probes
+crates/          the Rust. `ratio` is the binary (CLI, `server`, `watch`, `mcp`);
+                 `ratio-api` is the kernel API; `ratio-client` the Rust SDK
+proto/           the wire contract, AIP-linted
+sdk/             Python and TypeScript SDKs (TypeScript is not built by Bazel)
+console/         the operations console — Next.js, Vercel, NOT built by Bazel
+connect/         first-party Connect apps (Python), outside the kernel
+demo/            the five-minute demo and the shadow run, as shell tests
+deploy/          the Lambda image, its stacks, the demo seed scripts
+site/ paper/ marketing/ competitive/    written material, with checks on the wording
+docs/            current state, decisions, evidence; docs/history/ is history
+specs/           ⚠ the ORIGINAL program's specs. History, not requirements
+```
 
 ## Rules that are not negotiable
 
 **Bazel only. Never `cargo`.** `cargo build` cannot succeed — the workspace
 members are stale and the Lean emission step has no Cargo equivalent.
 
-⚠ **`bazel test //...` is the whole suite for everything except `console/`.** The
-operations console is a Next.js application built by Vercel, so there is no
-JavaScript toolchain in the Bazel graph; `.github/workflows/console.yml` is a
-required check and runs `tsc --noEmit`, the render suite, `next build` and six
-source-text checks. ⛔ The one thing Bazel still asserts about the console is
-`//proto:mirrors_test`, which holds `console/src/wire/types.ts` to the proto.
-`//:plan_refusals_test` also holds every `BookKind` in that file to `PLAN.md`.
+⚠ **`bazel test //...` is the whole suite for everything except `console/`**
+(and `sdk/typescript/`, and `site/`). The console has no JavaScript toolchain in
+the Bazel graph; `.github/workflows/console.yml` is a required check. ⛔ The one
+thing Bazel still asserts about the console is `//proto:mirrors_test`, which
+holds `console/src/wire/types.ts` to the proto. `//:plan_refusals_test` also
+holds every `BookKind` in that file to `PLAN.md`.
 
-**Proofs before code, for anything that decides a figure.** The order in this
-repository is Lean or TLA+ first, then Rust against it. `//tla:relief_engine_
-check` and `Ratio.Lots.Relief` were written before the relief engine ran, and
-the engine has been wrong in ways only `decide` reported.
+**Proofs before code, for anything that decides a figure.** Lean or TLA+ first,
+then Rust against it. `//tla:relief_engine_check` and `Ratio.Lots.Relief` were
+written before the relief engine ran, and the engine has been wrong in ways
+only `decide` reported.
 
 **Never `sorry`, `admit`, `axiom`, or `native_decide`** — `//lean:audit_proofs_
 test` fails the build on all four, and every Lean file must set
 `warningAsError true`. Before that option was set, a file proving `(1 : Int) = 2`
 by `sorry` passed.
 
-**Every `tla_check` tagged `manual` must FAIL.** It is a probe: one dial flipped,
-one invariant that must break. Run `tla/probes.sh` after touching a spec — it
-checks each went red *for the reason its config names*, because a probe that
-fails on a missing constant looks exactly like one doing its job.
+**Every `tla_check` tagged `manual` must FAIL.** It is a probe: one dial
+flipped, one invariant that must break. Run `tla/probes.sh` after touching a
+spec — it checks each went red *for the reason its config names*, because a
+probe that fails on a missing constant looks exactly like one doing its job.
 
 **Money is never a float, and a figure that will not divide is refused rather
 than rounded.** `Ratio.Lots.partial_relief_is_exactly_pro_rata` — the remainder
@@ -203,21 +120,48 @@ which is unbounded; every emitted function runs on `i64`, which is not.
 `ratio_common::checked` is the Rust side of `Ratio.Bounded`. Asking a wrapped
 number a question gets an answer about a product that never happened.
 
+⛔ **Never invent a `Method` / `Order` / `lot_method` variant** for MinTax,
+SpecID, average cost, or wash. Each is an election with its own shape
+(`min_tax_short_weight`, `identified_lots`, `average_cost`,
+`wash_window_days` / `wash_keep_holding_period`). The TLA probes that treat
+them as a Method exist so that mistake goes red. HANDOFF.md records why.
+
+**Core stays a thin, correct book of record; breadth is a Connect app** unless
+a PLAN amendment says otherwise — client/LP/vendor portals, bank OAuth, AIA pay
+apps, tax packs, EAC/forecast
+([#150](https://github.com/mattmarshall/ratio/issues/150)). The kernel cites
+the figures those apps read. `rules:approve` and `config:promote` are not
+scopes: the fence is absence.
+
+**`BookKind` is one list, not a fork.** A Book is a journal plus
+content-addressed configuration, independent of Funds and WorkOS organizations.
+Kind selects the chart and the screens. `UNSPECIFIED` is the proto default, not
+a hidden fifth kind. Do not mint a screen list per issue, and do not file a
+household or a job under a Fund so old URLs keep working.
+
+⛔ **The iOS shell never changes an amount.** It consumes a pinned kernel
+revision. A change to the lot engine, the projection, the journal format or
+anything emitted from Lean is a PR into *this* tree.
+
+**Humans approve.** `ratio approve`, `ratio accept` and `ratio close` record a
+person's decision. An agent proposes, and does not merge or approve its own
+work without being asked.
+
 ## How things fail here, which is what to look for
 
 **The books tie and the number is wrong.** Nearly every defect found in this
-repository has that shape: conservation holds, the trial balance ties, the digest
-reproduces, and one figure is somebody else's. A test that only checks the books
-balance will not see any of it. HANDOFF.md has the table.
+repository has that shape: conservation holds, the trial balance ties, the
+digest reproduces, and one figure is somebody else's. A test that only checks
+the books balance will not see any of it. HANDOFF.md has the table.
 
 **The realized gain is the figure with no counterparty.** A wrong NAV is caught
-by a reconciliation. A wrong gain is caught by nobody until a tax authority asks.
-Most guards in the lot engine are about it.
+by a reconciliation. A wrong gain is caught by nobody until a tax authority
+asks. Most guards in the lot engine are about it.
 
-**Green suites that test nothing.** Mutation testing found three. Break the thing
-a test protects and confirm the test fails — writing it is not the same as it
-working. Several tests in this repository were added only after a sabotage run
-showed the existing ones stayed green.
+**Green suites that test nothing.** Mutation testing found three. Break the
+thing a test protects and confirm the test fails — writing it is not the same
+as it working. Several tests here were added only after a sabotage run showed
+the existing ones stayed green. A comment nothing tests will drift.
 
 ## Working style that fits this repository
 
@@ -229,19 +173,29 @@ showed the existing ones stayed green.
   Most valuable are the ones recording what was tried and was wrong.
 - **Test names are sentences describing a property** —
   `a_husk_gives_away_its_cost`, not `test_relief_2`.
-- **Measure before claiming a performance property**, and report both curves when
-  there are two. `ratio bench` is shaped to make the overclaim hard.
+- **Measure before claiming a performance property**, and report both curves
+  when there are two. `ratio bench` is shaped to make the overclaim hard.
+- **American English** in code, comments, docs and commit messages.
 
-## Where to start reading
+## Context budget — what not to read whole
+
+| Path | Instead |
+|---|---|
+| `MODULE.bazel.lock` (1.2 MB), `Cargo.lock`, `console/pnpm-lock.yaml` | never read; regenerate (see `build-and-test`) |
+| `PLAN.md` (310 KB), `HANDOFF.md` (130 KB) | search for the section, issue number or term you need |
+| `crates/ratio-console/src/lib.rs` (680 KB), `crates/ratio-project/src/lib.rs`, `crates/ratio/src/{main,watch}.rs`, `crates/ratio-store/src/lib.rs`, `crates/ratio-rules/src/lib.rs`, `console/src/app/screens.test.tsx`, `proto/ratio/console/v1/console.proto` | search for the function, RPC or test name and read around it |
+| `bazel-bin/`, `bazel-out/`, `bazel-testlogs/`, `bazel-ratio/`, `node_modules/` | build output; read a specific test log, never the tree |
+| `images/`, `site/fonts/`, `docs/evidence/` | binary assets and recorded evidence |
+| `specs/`, `docs/history/` | history of an earlier program and earlier sessions; not instructions |
+| `generated.rs` | not in the tree: emitted from Lean at build time |
+
+## Where to read the code from
 
 | | |
 |---|---|
-| `HANDOFF.md` | what is load-bearing and what will bite |
-| Dispatch (this file) | Grok Bot tracks + Cursor cloud agents: one issue → one agent → one PR |
 | `lean/Ratio/Core.lean` | conservation over a vector of dimensions — everything rests on this |
 | `lean/Ratio/Chart/Dimensions.lean` | what a chart of accounts IS: conserved vs partitioning vs measured |
 | `crates/ratio-project/src/lib.rs` | the read model, and `AsOf<T>` — the type that makes its one catastrophic failure unrepresentable |
 | `tla/Projection.tla` | a figure must pin the prefix it read |
-
-⚠ `specs/` describes the original personal-finance program and is kept only for
-history. Nothing in it is a requirement.
+| `crates/ratio/src/main.rs` | every CLI verb; `ratio --help` lists them |
+| `DEVELOPING.md` | the human-oriented build guide, CI coverage table, and layout notes |

@@ -247,3 +247,11 @@ trusted compiler and the audit rejects it.
 See [AGENTS.md](AGENTS.md). Most of this repository was written that way, and
 the rules there are the ones that matter — proofs first, Bazel only, and break
 what a test protects to find out whether it works.
+
+The task-level instructions are skills in [`.agents/skills/`](.agents/skills/),
+each with scripts that have been run: `affected-tests.sh` (only the tests a
+change touches), `override_github_archives.py` (Bazel in a sandbox that refuses
+GitHub archive downloads), `smoke.sh` (the binary end to end), `tlc.sh` (TLC
+state counts outside Bazel), and `contract-checks.sh` (the console's
+source-text checks, without Node). They are written for agents and work just
+as well typed by hand.
