@@ -1,5 +1,12 @@
 # Ratio — current state
 
+November 20, 2026: `ratio strike` refuses a position with no price on the day
+it lands, with or without `--as-of`. The seeded demo's two struck funds now
+carry a vendor price for their 250 VWRL, delivered to the already-published
+books by the one-time `appended-price-facts-v1` migration
+([durable startup](durable-startup.md#the-reviewed-price-fact-extension)). No
+NAV or journal figure changed.
+
 October 24 owner decisions: **on-device Personal and hosted SQL tiering** is
 [adopted](storage-backends.md), with the limited provider broker, funds/shared
 workspaces on the hosted SQL direction, and all existing recovery gates.

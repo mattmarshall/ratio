@@ -78,9 +78,16 @@ proves little; say the number in the PR.
 
 ## A worked example
 
-`tla/StrikeDay.tla` (#393) models the day a strike's price check asks about
-against the day the strike lands on. `MCStrikeDay.cfg` passes over 3,485
-distinct states. Two probes flip `AsOfMustBeTheStrikeDay` and go red on
-`AStrikeLandsOnTheDayItWasAskedFor` and `ACheckedStrikeIsPricedOnItsOwnDay`.
-A third, `BareStrikeIsUnchecked.cfg`, keeps a known remaining gap red on
-purpose rather than letting it be forgotten. Copy that shape.
+`tla/StrikeDay.tla` models the day a strike's price check asks about against
+the day the strike lands on. `MCStrikeDay.cfg`, with both fixes on, passes over
+1,741 distinct states. Each fix has a probe that flips it back and goes red:
+`StrikeAsOfElsewhere` and `StrikeCheckedElsewhere` for `--as-of` (#393), and
+`BareStrikeIsUnchecked` for the bare strike, which first shipped as a probe
+kept red on purpose so the gap could not be forgotten, then became the fix's
+probe once the gap closed. Copy that shape.
+
+`tla/SeedExtension.tla` is the concurrency case: two deploys, a demo user
+writing at runtime, and a crash at any step, against an append-only store whose
+markers cannot be overwritten. Its three probes each remove one ordering or
+comparison the Rust performs, and each has a Rust test that a sabotage run
+showed goes red too.

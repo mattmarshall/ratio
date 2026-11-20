@@ -445,6 +445,30 @@ CSV
 "$RATIO" admit --book "$OUT" >/dev/null
 "$RATIO" mark --as-of 2026-02-26 --book "$OUT" >/dev/null
 
+# A late vendor file: the close for the third trade's instrument.
+#
+# ⛔ WITHOUT IT, TWO "STRUCK" FUNDS WERE STRUCK OVER AN UNVALUED HOLDING. The
+# EOD file above prices VTI and VOO only, so 250 VWRL had no price on any day
+# and every NAV over this book carried it at cost, unvalued. `ratio strike`
+# now checks prices on the day it lands, with or without --as-of, and refuses.
+#
+# ⚠ APPENDED, NOT ADDED TO eod-prices.csv. This book is already published to
+# the demo's durable store, where a published line never changes. The
+# `appended-price-facts-v1` deploy migration may only APPEND price facts and
+# the deliveries that carry them (`tla/SeedExtension.tla`); a row folded into
+# the file above would rewrite that delivery and both facts citing it.
+#
+# 112.40 EUR is the trade's own price on its own day: carrying value already
+# equals market, nothing needs marking, and every figure the demo showed stands.
+# Skipped when the master leaves VWRL out on purpose, where it would only pend.
+if [ -z "${LEAVE_ONE_PENDING:-}" ]; then
+  cat > late-prices.csv <<'CSV'
+PriceRef,ValuationDate,ISIN,Ticker,Exchange,Price,Currency
+P-0003,26/02/2026,,VWRL,XAMS,112.40,EUR
+CSV
+  "$RATIO" ingest late-prices.csv --template vendor_eod_prices --book "$OUT" >/dev/null
+fi
+
 # ── SpecID, as a citeable sale — not a lot_method ─────────────────────────
 #
 # A zero-gain round-trip on an instrument nothing else holds, so the

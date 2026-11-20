@@ -91,8 +91,8 @@ usage:
   ratio reconcile A B [--book DIR]     what two books of record disagree about,
                                        entry by entry — the difference is a list
   ratio strike [--as-of D] [--view V]  strike a NAV, pinned to the journal
-        [--book DIR]                   with --as-of it REFUSES an unpriced position;
-                                       D must be today's UTC date, the day it lands on
+        [--book DIR]                   REFUSES a position with no price on the day it
+                                       lands; --as-of D, if given, must be that UTC date
   ratio navs [--view V]                every NAV struck on this book
   ratio replay ID [--view V]           re-derive a strike and prove it again
   ratio recon TXNS.csv POSITIONS.csv   shadow-run a period and report breaks
@@ -2483,7 +2483,14 @@ fn strike_at(book: PathBuf, as_of: Option<&str>, view: Option<&str>, valuation_t
     // subsumes it, and adds the breaks nobody has explained and the facts that
     // do not resolve. Clearing one obstacle only to be shown the next is the
     // shape this replaces.
-    refuse_if_blocked(&book, as_of)?;
+    // ⛔ THE STRIKE CHOOSES THE DAY, SO THE PRICE CHECK ALWAYS HAS ONE. A bare
+    // strike used to skip `unpriced_at` — "a book does not know what day it
+    // is" — and then stamped a day anyway. Both seeded demo funds that showed
+    // a NAV were struck that way over 250 VWRL nothing had priced.
+    // `Ratio.Valuation.strike_refuses_exactly_when_something_is_unpriced`;
+    // `//tla:bare_strike_is_unchecked_check` is this line's absence.
+    let day = ratio_nav::valuation_date(valuation_time);
+    refuse_if_blocked(&book, Some(&day))?;
     // ⛔ RESOLVED BEFORE ANYTHING IS WRITTEN. On a book keeping more than one
     // book of record an unnamed view is refused, because a NAV recorded under a
     // convention nobody chose is the failure this whole feature is about.
@@ -2731,11 +2738,11 @@ fn blocking_text(book: &std::path::Path, as_of: Option<&str>) -> Result<Option<S
     let c = console_cli(book);
     let blocking = c.blocking_at("demo")?;
 
-    // ⛔ WITHOUT A VALUATION DATE THE UNPRICED CHECK DOES NOT RUN, and that is
-    // the honest limit rather than an oversight: "unpriced" is not a well-formed
-    // question until somebody says as of WHEN, and a book does not know what day
-    // it is. The breaks and the facts above have no such dependency, so they are
-    // checked either way.
+    // ⚠ WITHOUT A DAY THE UNPRICED CHECK DOES NOT RUN: "unpriced" is not a
+    // well-formed question until somebody says as of WHEN. The breaks and the
+    // facts above have no such dependency, so they are checked either way.
+    // ⛔ `strike_at` always passes the day it lands on — the strike chooses one,
+    // so it can ask. `None` is left for callers that only want the breaks.
     let unpriced = match as_of {
         Some(day) => {
             if day.split('-').count() != 3 {
@@ -3695,6 +3702,7 @@ weight = -1
         // every assertion above and is useless, so one break has to get
         // through — and which one is a term of the agreement, not a constant.
         let book = book_with_a_break("under", 100);
+        price_vti(&book, "2026-02-26");
         assert!(strike(book, None, None).is_ok(), "100 is beneath notice and blocks nothing");
     }
 
@@ -3704,6 +3712,7 @@ weight = -1
         // so the gate and the verb that clears it ship together and this is
         // what joins them.
         let book = book_with_a_break("cleared", 200_000);
+        price_vti(&book, "2026-02-26");
         assert!(strike(book.clone(), None, None).is_err(), "blocked to begin with");
 
         accept(book.clone(), "1", None, "the custodian's unsettled dividend, clears T+2").unwrap();
@@ -3717,6 +3726,7 @@ weight = -1
         // A note about a figure that has since moved is not a note about this
         // one. The fund goes back to blocked, and the words stay visible.
         let book = book_with_a_break("stalegate", 200_000);
+        price_vti(&book, "2026-02-26");
         accept(book.clone(), "1", None, "about the old number").unwrap();
         assert!(strike(book.clone(), None, None).is_ok(), "explained, so strikeable");
 
@@ -3753,6 +3763,61 @@ weight = -1
 
         let e = strike(book.clone(), None, None).unwrap_err().to_string();
         assert!(e.contains("the NAV was not struck"), "a moved figure is unexplained again: {e}");
+    }
+
+    /// Give `book_with_a_break`'s VTI a master record and one vendor price on
+    /// `on`, in the shapes `ratio ingest` writes (the seeded demo's own lines).
+    ///
+    /// ⚠ Every bare strike checks prices now, so a test about the BREAK gate
+    /// has to price the position or it is quietly a test of the price gate.
+    fn price_vti(book: &std::path::Path, on: &str) {
+        use std::io::Write;
+        let entity = r#"{"id":"VTI","kind":"instrument","display_name":"Vanguard Total Stock Market ETF","attributes":{"exchange":"ARCX","isin":"US9229087690","ticker":"VTI"}}"#;
+        let fact = format!(
+            r#"{{"entities":{{"instrument":{{"kind":"instrument","rungs":[[{{"attr":"ticker","value":"VTI"}},{{"attr":"exchange","value":"ARCX"}}]]}}}},"id":"test-price:{on}","kind":"price","provenance":{{"delivery":"test","received":1788393600,"row":2,"template":"test","template_id":"vendor_eod_prices"}},"reference":"P-{on}","values":{{"asOf":{{"iso":"{on}","type":"date"}},"price":{{"currency":"USD","minor":26250,"type":"money"}}}}}}"#
+        );
+        let append = |file: &str, line: &str| {
+            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(book.join(file)).unwrap();
+            writeln!(f, "{line}").unwrap();
+        };
+        if !book.join("entities.jsonl").exists() {
+            append("entities.jsonl", entity);
+        }
+        append("facts.jsonl", &fact);
+    }
+
+    /// 2026-02-25T16:00:00Z, the day before `price_vti`'s usual price.
+    const FEB_25TH_AT_FOUR: i64 = 1_772_035_200;
+
+    #[test]
+    fn a_bare_strike_refuses_a_holding_with_no_price_on_its_day() {
+        // ⛔ THE GAP. Without --as-of this used to strike: nothing asked
+        // whether VTI had a price, and the NAV carried it at cost unvalued.
+        let book = book_with_a_break("bareunpriced", 100);
+        let e = strike_at(book.clone(), None, None, JULY_3RD_AT_FOUR).unwrap_err().to_string();
+        assert!(e.contains("the NAV was not struck"), "{e}");
+        assert!(ratio_nav::list(&book).unwrap().is_empty(), "an unpriced NAV was recorded");
+    }
+
+    #[test]
+    fn a_bare_strike_over_priced_holdings_is_struck() {
+        // ⚠ THE ANTI-VACUITY TEST: a gate that refuses every bare strike
+        // passes the test above.
+        let book = book_with_a_break("barepriced", 100);
+        price_vti(&book, "2026-02-26");
+        strike_at(book.clone(), None, None, JULY_3RD_AT_FOUR).unwrap();
+        assert_eq!(ratio_nav::list(&book).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_price_dated_after_the_strike_day_does_not_price_it() {
+        // `Ratio.Valuation.a_later_price_does_not_help`, for the bare strike:
+        // the check is asked about the day the strike lands on, not today.
+        let book = book_with_a_break("barelater", 100);
+        price_vti(&book, "2026-02-26");
+        let e = strike_at(book.clone(), None, None, FEB_25TH_AT_FOUR).unwrap_err().to_string();
+        assert!(e.contains("the NAV was not struck"), "{e}");
+        assert!(ratio_nav::list(&book).unwrap().is_empty());
     }
 
     /// A book holding cash and nothing else, so no day can find it unpriced.

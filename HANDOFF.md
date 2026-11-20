@@ -1,5 +1,11 @@
 # Handoff — tax lots, corporate actions, and the dimensional chart
 
+November 20, 2026 — every `ratio strike` now checks prices on the day it lands,
+with or without `--as-of`. That exposed two seeded demo funds struck over 250
+unpriced VWRL; the seed now delivers its price through the reviewed one-time
+`appended-price-facts-v1` publication migration. No NAV or journal figure
+changed. See the strike and seed entries under "Traps that cost real time".
+
 October 24, 2026 — Related: #367. The owner adopted on-device Personal with
 the limited provider broker and hosted SQL for funds/shared workspaces.
 [The decision](docs/storage-backends.md) and PLAN distinguish merged backend
@@ -792,13 +798,24 @@ or `sidepocket:*`.
   strike id, the `NAVS` ledger's meaning and `one_answer_per_view_per_day`'s
   subject, and a fold cut at a past day over today's journal is unproven, so
   it is refused rather than backdated.
-- ⚠ **A bare `ratio strike` still runs no price check.** `blocking_text` skips
-  `unpriced_at` without `--as-of`, so a NAV can be struck over a holding with
-  no price on the day — against what
-  `strike_refuses_exactly_when_something_is_unpriced` promises.
-  `//tla:bare_strike_is_unchecked_check` keeps it red. The seed scripts and
-  `connect/fund-ops-alerts` depend on the current behavior, so turning the
-  check on is its own change.
+- ⛔ **EVERY `ratio strike` CHECKS PRICES ON THE DAY IT LANDS.** A bare strike
+  used to skip `unpriced_at` ("a book does not know what day it is") while
+  stamping a day anyway, so a NAV could be struck over a holding with no price,
+  against what `strike_refuses_exactly_when_something_is_unpriced` promises.
+  The seeded demo did exactly that: Northstar and Pennington, the two funds
+  shown as struck, held 250 VWRL that no vendor file priced.
+  `//tla:bare_strike_is_unchecked_check` is now the old behavior, red.
+  `nav_gate` on GetFund/GetView still leaves unpriced empty without an as-of:
+  a read has no day of its own to price.
+- ⛔ **A PUBLISHED SEED IS IMMUTABLE; THE VWRL PRICE WENT IN AS A ONE-TIME
+  EXTENSION.** `seed-demo-book.sh` appends a separate `late-prices.csv`
+  rather than editing `eod-prices.csv`, because folding the row in would
+  rewrite a published delivery and the facts citing it. The deploy names
+  `appended-price-facts-v1`, which may only append price facts and their
+  deliveries and writes a second marker
+  (`_seed/publications-ext-v1/<book-id>`) after its slots
+  (`tla/SeedExtension.tla`). Do not reuse it for any other change: write and
+  review a new migration, as this one was.
 - ⭐ **CreateBook seeds ingest templates per kind** — `bank-statement`
   (Personal: bank/card CSV → cash and expense claims) **and** `loan-payment`
   (Personal: principal + interest columns → two balanced rules merged into

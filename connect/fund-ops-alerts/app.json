@@ -39,7 +39,7 @@
   },
   "unpriced": {
     "status": "cited",
-    "note": "Unpriced is the third nav_gate list. Empty without as-of — the same limit a bare ratio strike already has. This app does not invent a mark and does not rewrite a strike."
+    "note": "Unpriced is the third nav_gate list. Empty without as-of — a read has no day of its own to price, unlike ratio strike, which checks the day it lands on. This app does not invent a mark and does not rewrite a strike."
   },
   "destinations": {
     "status": "refused",

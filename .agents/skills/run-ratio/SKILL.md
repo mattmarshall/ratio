@@ -34,7 +34,7 @@ cat > /tmp/sub.json <<'EOF'
 EOF
 $R post /tmp/sub.json --book /tmp/fund        # amounts are integer minor units; never floats
 $R balance --book /tmp/fund
-$R strike --book /tmp/fund                    # or --as-of $(date -u +%F) to run the price check
+$R strike --book /tmp/fund                    # refuses a position with no price on the day it lands
 $R navs --book /tmp/fund
 $R replay <ID> --book /tmp/fund
 ```

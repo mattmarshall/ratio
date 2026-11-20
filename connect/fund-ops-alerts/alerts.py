@@ -471,8 +471,9 @@ def nav_gate_from_cite(raw: Mapping[str, Any] | None) -> NavGateCite | None:
     if unpriced and valuation is None:
         raise Refuse(
             "unpriced stays empty unless a valuation date was named — "
-            "the same limit a bare ratio strike already has. Inventing "
-            "an unpriced list without as-of is a silent mark"
+            "a read has no day of its own to price (a strike does: it "
+            "checks the day it lands on). Inventing an unpriced list "
+            "without as-of is a silent mark"
         )
     return NavGateCite(
         unexplained_breaks=_string_list(
