@@ -628,6 +628,17 @@ pub fn day_of(unix_seconds: i64) -> views::Day {
     unix_seconds.div_euclid(86_400) as views::Day
 }
 
+/// The UTC calendar date a valuation point falls on, as `YYYY-MM-DD`.
+///
+/// ⛔ THE DAY `day_of` CUTS AT, SPELLED THE WAY `--as-of` AND A PRICE FILE SPELL
+/// IT. A caller comparing an operator's date to the strike's must compare it to
+/// this, not to a date it derived again: a second derivation is a second answer
+/// to the question `day_of` exists to answer once.
+pub fn valuation_date(unix_seconds: i64) -> String {
+    let (y, mo, d, _, _) = civil_from_unix(unix_seconds);
+    format!("{y:04}-{mo:02}-{d:02}")
+}
+
 /// `2026-06-30T16:00:00Z` → `2026-06-30T1600Z`.
 ///
 /// Stable, sortable, and safe as a filename and a URL segment — a strike is
@@ -1224,6 +1235,24 @@ mod tests {
         assert_eq!(id_for(1_782_662_400), "2026-06-28T1600Z");
         // Before the epoch, where a naive `/` instead of div_euclid goes wrong.
         assert_eq!(rfc3339(-1), "1969-12-31T23:59:59Z");
+    }
+
+    #[test]
+    fn the_valuation_date_turns_over_exactly_where_the_cut_does() {
+        // ⛔ `--as-of` is compared to this, and the fold cuts at `day_of`. If the
+        // two disagreed at a UTC midnight — where a period end sits — a strike
+        // would be checked against one day and folded through the next.
+        let midnight = 1_782_950_400; // 2026-07-02T00:00:00Z
+        for t in [midnight - 86_400, midnight - 1, midnight, midnight + 86_399, -1, 0] {
+            assert_eq!(valuation_date(t), id_for(t)[..10], "at {t}");
+            assert_eq!(
+                valuation_date(t) == valuation_date(midnight),
+                day_of(t) == day_of(midnight),
+                "the date and the cut disagree about {t}"
+            );
+        }
+        assert_eq!(valuation_date(midnight - 1), "2026-07-01");
+        assert_eq!(valuation_date(midnight), "2026-07-02");
     }
     /// A book keeping two books of record, over one journal.
     ///

@@ -297,7 +297,7 @@ def main() -> int:
         found = sorted({p for p in BANNED_EVERYWHERE if re.search(re.escape(p), text, re.I)})
         if found:
             err(name, f"licensing language: {', '.join(found)} — Ratio is "
-                      "source-available under copyleft, not open source; see site/README.md")
+                      "AGPL-3.0 with a commercial license alongside it; see LICENSING.md")
 
         # An unfilled placeholder must never reach a published page. The team
         # page ships with TODO markers on purpose — real people's roles are not

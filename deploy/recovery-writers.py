@@ -111,7 +111,10 @@ def main():
         event = work / "cli-entry.json"
         event.write_text(json.dumps([{"id": "live-cli-post", "postings": [{"dim": 2, "amount": 2500}, {"dim": 20, "amount": -2500}], "trade_date": "2026-07-02"}]))
         phase("live-cli-post", lambda: command("cli-post", [core, "post", event, "--book", serving / "alpha"], configured))
-        phase("live-cli-strike", lambda: command("cli-strike", [core, "strike", "--as-of", "2026-07-03", "--book", serving / "alpha"], configured))
+        # ⛔ --as-of must name the day the strike lands on: the CLI's clock,
+        # which is RATIO_SEED_EPOCH when set. A fixed date here is refused.
+        strike_day = time.strftime("%Y-%m-%d", time.gmtime(int(configured.get("RATIO_SEED_EPOCH") or time.time())))
+        phase("live-cli-strike", lambda: command("cli-strike", [core, "strike", "--as-of", strike_day, "--book", serving / "alpha"], configured))
         phase("live-stdio-mcp-post", lambda: mcp("mcp-post", "beta", "post_events", {"events": [{"rule": "household_income", "id": "live-mcp-post", "amount": 1000}]}))
         proposal = '[[rule]]\nid="recovery_draft"\nkind="trade"\n[[rule.posting]]\naccount=1\nweight=1\n[[rule.posting]]\naccount=20\nweight=-1\n'
         phase("live-stdio-mcp-draft", lambda: mcp("mcp-draft", "beta", "propose_rule", {"toml": proposal}))
