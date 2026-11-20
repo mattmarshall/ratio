@@ -24,7 +24,7 @@ EXTENDS Naturals, FiniteSets
 CONSTANTS
     Days,                   \* valuation days, numbered from 1
     AsOfMustBeTheStrikeDay, \* the fix. FALSE checks the asked day and strikes the clock's.
-    BareStrikeChecksPrices  \* FALSE is what ships: no --as-of, no price check.
+    BareStrikeChecksPrices  \* the fix. FALSE strikes without --as-of unchecked.
 
 \* `ratio strike` with no --as-of. Days are numbered from 1, so this is none.
 NoDay == 0
@@ -130,10 +130,10 @@ ACheckedStrikeIsPricedOnItsOwnDay ==
 (*    What `strike_refuses_exactly_when_something_is_unpriced` promises:   *)
 (*    no path to a struck NAV with an unvalued holding.                    *)
 (*                                                                         *)
-(*    ⚠ FALSE OF WHAT SHIPS. A bare `ratio strike` runs no price check, by *)
-(*    design: "a book does not know what day it is". The seed scripts and *)
-(*    the fund-ops-alerts Connect app depend on that. It is a probe, so    *)
-(*    the gap stays visible until BareStrikeChecksPrices is turned on.     *)
+(*    ⭐ THE STRIKE CHOOSES THE DAY, SO IT CAN CHECK IT. The bare strike  *)
+(*    used to skip the check because "a book does not know what day it  *)
+(*    is" — but the strike stamps a day either way. It now checks the    *)
+(*    day it lands on; BareStrikeIsUnchecked.cfg is the old behavior.    *)
 (***************************************************************************)
 EveryStrikeIsPricedOnItsOwnDay ==
     \A s \in struck : s.priced

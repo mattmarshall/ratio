@@ -164,8 +164,9 @@ tla_check(
     deps = [":strike_day"],
 )
 
-# ⚠ What still ships: a bare `ratio strike` runs no price check. Red on purpose
-# until it does. EveryStrikeIsPricedOnItsOwnDay goes red.
+# ⛔ The bare strike before the fix: no --as-of, no price check, so the seeded
+# demo struck two NAVs over an unpriced holding. EveryStrikeIsPricedOnItsOwnDay
+# goes red.
 tla_check(
     name = "bare_strike_is_unchecked_check",
     size = "small",
@@ -173,6 +174,55 @@ tla_check(
     module = "BareStrikeIsUnchecked.tla",
     tags = ["manual"],
     deps = [":strike_day"],
+)
+
+# Extending an already-published demo seed once, by appending lines
+# (`appended-price-facts-v1`). Published slots are immutable and so is the
+# marker, so the extension is a second marker, written only after its slots.
+tla_library(
+    name = "seed_extension",
+    srcs = ["SeedExtension.tla"],
+)
+
+tla_check(
+    name = "seed_extension_check",
+    size = "small",
+    config = "MCSeedExtension.cfg",
+    module = "MCSeedExtension.tla",
+    deps = [":seed_extension"],
+)
+
+# ⛔ The marker written before its slots: a crash leaves serving startup
+# trusting lines the store does not hold. AnImageThatStartsFindsItsSeed goes red.
+tla_check(
+    name = "seed_extension_marker_first_check",
+    size = "small",
+    config = "SeedExtensionMarkerFirst.cfg",
+    module = "SeedExtensionMarkerFirst.tla",
+    tags = ["manual"],
+    deps = [":seed_extension"],
+)
+
+# ⛔ A slot a demo user already filled, skipped instead of compared.
+# AnImageThatStartsFindsItsSeed goes red.
+tla_check(
+    name = "seed_extension_skips_occupied_check",
+    size = "small",
+    config = "SeedExtensionSkipsOccupied.cfg",
+    module = "SeedExtensionSkipsOccupied.tla",
+    tags = ["manual"],
+    deps = [":seed_extension"],
+)
+
+# ⛔ Lengths compared, not content: a rewritten published line passes for an
+# extension. ExtensionExtendsBase goes red.
+tla_check(
+    name = "seed_extension_no_prefix_check",
+    size = "small",
+    config = "SeedExtensionNoPrefixCheck.cfg",
+    module = "SeedExtensionNoPrefixCheck.tla",
+    tags = ["manual"],
+    deps = [":seed_extension"],
 )
 
 # Relieving tax lots at scale. `Ratio.Lots` proves the ARITHMETIC of one
