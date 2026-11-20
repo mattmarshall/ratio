@@ -292,7 +292,3 @@ set of creatives and is not in this file.
   same checklist item is open on the website.
 - **Reddit disclosure.** These run as Promoted posts from a Ratio account.
   Decide the account name before the first buy; it appears above every headline.
-- **`marketing/BUILD.bazel` still describes the license as "NOT open source and
-  NOT self-hostable"** in a comment, which `marketing/verify_language.py` now
-  bans in the prose it checks. The comment is not checked, so it has not gone
-  red. Unrelated to this campaign, but it is the same class of drift.

@@ -68,7 +68,58 @@ def strip_comments(text: str) -> str:
     return "\n".join(out)
 
 
+def hits(text: str) -> list[tuple[str, str, str]]:
+    """Every banned phrase in comment-stripped `text`, as (phrase, why, context)."""
+    # Collapse newlines so a phrase broken across a line wrap still matches;
+    # LaTeX rewraps constantly and a check that only sees single lines would
+    # pass on exactly the edits most likely to reintroduce a banned phrase.
+    #
+    # Join at a trailing hyphen FIRST. `self-\nhostable` collapses to
+    # "self- hostable" under a plain whitespace squeeze and then matches
+    # nothing — which is how the first version of this check passed a
+    # deliberately planted "self-hostable".
+    joined = re.sub(r"-[ \t]*\n[ \t]*", "-", text)
+    flat = re.sub(r"\s+", " ", joined)
+    # ⛔ AN EXCEPTION COVERS ITS OWN SPAN AND NOTHING ELSE. This used to skip
+    # any hit within 40 characters of an excepted phrase, and so passed "Ratio
+    # is not permissively licensed and is not open source" in two sections of
+    # the brief — a banned claim excused by the true one beside it. Blank the
+    # excepted span (same length, so offsets still index `flat` for context),
+    # then search what is left.
+    low = flat.lower()
+    for e in EXCEPTIONS:
+        low = low.replace(e.lower(), " " * len(e))
+    found = []
+    for phrase, why in BANNED:
+        start = 0
+        while (i := low.find(phrase.lower(), start)) != -1:
+            start = i + 1
+            context = flat[max(0, i - 50) : i + len(phrase) + 50].strip()
+            found.append((phrase, why, context))
+    return found
+
+
+def self_test() -> None:
+    """Refuse to vouch for the briefs if the check cannot see a planted hit.
+
+    ⭐ THIS RUNS BEFORE THE REAL FILES, EVERY TIME. The window-based exception
+    stayed green over two false sentences, and a green check over clean files
+    looks identical to a check that cannot fail. These are the two sentences
+    that went through, plus the true one that must stay allowed.
+    """
+    planted = {
+        "Ratio is not permissively licensed and is not open source:": ["not open source"],
+        "it is not\nopen source and not permissively licensed, and": ["not open source"],
+        "Ratio is not permissively licensed.": [],
+    }
+    for text, want in planted.items():
+        got = [p for p, _, _ in hits(text)]
+        if got != want:
+            sys.exit(f"self-test: {text!r} gave {got}, expected {want} — the check is broken")
+
+
 def main() -> None:
+    self_test()
     roots = sys.argv[1:] or ["marketing"]
     files = sorted(
         f for root in roots for f in pathlib.Path(root).rglob("*.tex")
@@ -78,27 +129,8 @@ def main() -> None:
 
     errors = []
     for f in files:
-        text = strip_comments(f.read_text(encoding="utf-8"))
-        # Collapse newlines so a phrase broken across a line wrap still matches;
-        # LaTeX rewraps constantly and a check that only sees single lines would
-        # pass on exactly the edits most likely to reintroduce a banned phrase.
-        #
-        # Join at a trailing hyphen FIRST. `self-\nhostable` collapses to
-        # "self- hostable" under a plain whitespace squeeze and then matches
-        # nothing — which is how the first version of this check passed a
-        # deliberately planted "self-hostable".
-        joined = re.sub(r"-[ \t]*\n[ \t]*", "-", text)
-        flat = re.sub(r"\s+", " ", joined)
-        low = flat.lower()
-        for phrase, why in BANNED:
-            start = 0
-            while (i := low.find(phrase.lower(), start)) != -1:
-                start = i + 1
-                window = low[max(0, i - 40) : i + len(phrase) + 40]
-                if any(e in window for e in EXCEPTIONS):
-                    continue
-                context = flat[max(0, i - 50) : i + len(phrase) + 50].strip()
-                errors.append(f"{f}: {phrase!r} — {why}\n      …{context}…")
+        for phrase, why, context in hits(strip_comments(f.read_text(encoding="utf-8"))):
+            errors.append(f"{f}: {phrase!r} — {why}\n      …{context}…")
 
     print(f"checked {len(files)} .tex file(s) under {', '.join(roots)}")
     if errors:

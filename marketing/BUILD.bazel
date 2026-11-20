@@ -20,11 +20,14 @@ tectonic_pdf(
     ]),
 )
 
-# The licensing sweep. Ratio is source-available with a commercial license for
-# operators — NOT open source and NOT self-hostable — and the brief shipped the
-# opposite wording for months because nothing checked it. site/verify.py has
-# enforced this on the web pages all along; this is the same check for the
-# LaTeX, over every document tree at once.
+# The licensing sweep. Ratio is AGPL-3.0 with a commercial license alongside it
+# (LICENSING.md), and prose drifts back toward whatever the license used to be
+# because nothing in a diff flags it. site/verify.py does this for the web
+# pages; this is the same check for the LaTeX, over every document tree at once.
+#
+# ⚠ THIS COMMENT ITSELF DRIFTED. It called Ratio "NOT open source and NOT
+# self-hostable" after the AGPL made both false, and stayed that way because the
+# check reads .tex, not BUILD files.
 sh_test(
     name = "language_test",
     size = "small",
