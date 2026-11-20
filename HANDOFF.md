@@ -781,11 +781,24 @@ or `sidepocket:*`.
   `AcceptBreakExplanation` "just for the API" forces the write screen the fence
   forbids — which is why acceptance is a CLI verb. The mechanism protecting the
   buttonless console is that test, not discipline.
-- ⚠ **`ratio strike` STILL TAKES ITS VALUATION POINT FROM `SystemTime::now()`,
-  EVEN WITH `--as-of`.** The flag is only a gate parameter; a strike labelled
-  as-of a past day is stamped today. Surfaced while building the gate and
-  deliberately not fixed there — it changes the strike id, the `NAVS` ledger's
-  meaning and `one_answer_per_day`'s subject, and belongs in its own commit.
+- ⛔ **`ratio strike --as-of D` REFUSES ANY D BUT THE DAY IT LANDS ON.** The
+  flag used to feed only the price check while the strike was folded,
+  labelled and recorded at the clock's day, so asking for 30 June in July
+  filed July's NAV and spent July's one answer — and a price dated after the
+  clock's day passed a check run for that day while the strike landed
+  unpriced. `//tla:strike_day_check` holds the one-day property; its two
+  probes are the old behavior. The valuation point is still the clock
+  (`RATIO_SEED_EPOCH` for seeds): taking it from `--as-of` would change the
+  strike id, the `NAVS` ledger's meaning and `one_answer_per_view_per_day`'s
+  subject, and a fold cut at a past day over today's journal is unproven, so
+  it is refused rather than backdated.
+- ⚠ **A bare `ratio strike` still runs no price check.** `blocking_text` skips
+  `unpriced_at` without `--as-of`, so a NAV can be struck over a holding with
+  no price on the day — against what
+  `strike_refuses_exactly_when_something_is_unpriced` promises.
+  `//tla:bare_strike_is_unchecked_check` keeps it red. The seed scripts and
+  `connect/fund-ops-alerts` depend on the current behavior, so turning the
+  check on is its own change.
 - ⭐ **CreateBook seeds ingest templates per kind** — `bank-statement`
   (Personal: bank/card CSV → cash and expense claims) **and** `loan-payment`
   (Personal: principal + interest columns → two balanced rules merged into

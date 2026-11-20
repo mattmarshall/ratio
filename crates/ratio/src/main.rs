@@ -91,7 +91,8 @@ usage:
   ratio reconcile A B [--book DIR]     what two books of record disagree about,
                                        entry by entry — the difference is a list
   ratio strike [--as-of D] [--view V]  strike a NAV, pinned to the journal
-        [--book DIR]                   with --as-of it REFUSES an unpriced position
+        [--book DIR]                   with --as-of it REFUSES an unpriced position;
+                                       D must be today's UTC date, the day it lands on
   ratio navs [--view V]                every NAV struck on this book
   ratio replay ID [--view V]           re-derive a strike and prove it again
   ratio recon TXNS.csv POSITIONS.csv   shadow-run a period and report breaks
@@ -2465,6 +2466,17 @@ fn book_label(book: &std::path::Path) -> String {
 /// — 16:00 New York for a US mutual fund — and that belongs in configuration
 /// rather than in a flag, so it is deliberately not one.
 fn strike(book: PathBuf, as_of: Option<&str>, view: Option<&str>) -> Result<()> {
+    strike_at(book, as_of, view, now()?)
+}
+
+/// `strike`, at a valuation point the caller has already read.
+///
+/// ⛔ THE CLOCK IS READ ONCE. The day `--as-of` is held to and the day the
+/// strike lands on must be the same reading; two calls to `now()` either side
+/// of a UTC midnight would be two days, which is the defect this exists to
+/// close.
+fn strike_at(book: PathBuf, as_of: Option<&str>, view: Option<&str>, valuation_time: i64) -> Result<()> {
+    as_of_is_the_strike_day(as_of, valuation_time)?;
     // ⛔ ONE REFUSAL, LISTING EVERYTHING. The unpriced-position check used to
     // live inline here and was the only thing consulted; `refuse_if_blocked`
     // subsumes it, and adds the breaks nobody has explained and the facts that
@@ -2477,7 +2489,7 @@ fn strike(book: PathBuf, as_of: Option<&str>, view: Option<&str>) -> Result<()> 
     let view = view_or_refuse(&book, view)?;
     let actor = actor_name();
     let s = ratio_nav::strike_and_record_with_store(
-        &book, &view, now()?, &actor, crate::installed_object_store(),
+        &book, &view, valuation_time, &actor, crate::installed_object_store(),
     )?;
 
     println!("struck {} in {}", s.id, s.view);
@@ -2489,6 +2501,38 @@ fn strike(book: PathBuf, as_of: Option<&str>, view: Option<&str>) -> Result<()> 
     println!("  by         {}", s.actor);
     println!();
     println!("Re-derive it any time with:  ratio replay {} --view {}", s.id, s.view);
+    Ok(())
+}
+
+/// Refuse an `--as-of` that names any day but the one the strike lands on.
+///
+/// ⛔ THIS WAS TWO DAYS, AND BOTH THEOREMS HELD. `--as-of` used to feed only
+/// the price check, while the strike was folded, labelled and recorded at the
+/// clock's day. Asking for 30 June in July filed July's NAV under July's id,
+/// spent July's one answer (`Ratio.Period.one_answer_per_view_per_day`), and
+/// checked prices for a day the figure was not about — a price dated after the
+/// clock's day passed a check run for that day and the strike landed unpriced.
+/// `Ratio.Valuation.strike_refuses_exactly_when_something_is_unpriced` and
+/// `Ratio.Period.strike_lands_on_the_day_being_valued` are each about ONE day;
+/// `//tla:strike_day_check` is about there being only one, and its two probes
+/// are this function's absence.
+///
+/// ⚠ REFUSED, NOT BACKDATED. Taking the valuation point from `--as-of` would
+/// change the strike id, what the NAVS ledger means, and which day the
+/// one-answer rule is about, and a fold cut at a past day over today's journal
+/// is a question no theorem here answers.
+fn as_of_is_the_strike_day(as_of: Option<&str>, valuation_time: i64) -> Result<()> {
+    let Some(asked) = as_of else { return Ok(()) };
+    let day = ratio_nav::valuation_date(valuation_time);
+    if asked != day {
+        bail!(
+            "--as-of {asked} names a day this strike would not land on. A NAV is struck at its \
+             valuation point, which is {day} (UTC), so it would be filed under {day} while its \
+             prices were checked for {asked}. Nothing was struck.\n  \
+             To strike now with the price check, pass --as-of {day}. A NAV for another day is \
+             struck on that day; there is no backdated strike."
+        );
+    }
     Ok(())
 }
 
@@ -3708,6 +3752,83 @@ weight = -1
 
         let e = strike(book.clone(), None, None).unwrap_err().to_string();
         assert!(e.contains("the NAV was not struck"), "a moved figure is unexplained again: {e}");
+    }
+
+    /// A book holding cash and nothing else, so no day can find it unpriced.
+    ///
+    /// ⚠ WHY NOT `book_with_a_break`: it holds VTI with no price, so the price
+    /// check refuses it at EVERY `--as-of` day, and a test of the day check
+    /// built on it stays green with the day check deleted.
+    fn book_holding_only_cash(name: &str) -> PathBuf {
+        use ratio_store::{Account, AccountTypeRecord as A, JournalEntry, PostingRecord};
+
+        let dir = std::env::temp_dir().join(format!("ratio-strike-day-{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        init(dir.clone()).unwrap();
+        let mut b = FileBook::open(&dir).unwrap();
+        b.put_accounts(&[
+            Account { dim: 2, display_name: "Cash and equivalents".into(), account_type: A::Asset },
+            Account { dim: 20, display_name: "Capital".into(), account_type: A::Equity },
+        ])
+        .unwrap();
+        let d = b.active().unwrap().unwrap();
+        b.append(&JournalEntry {
+            id: "c1".into(),
+            memo: "subscription".into(),
+            config: d,
+            postings: vec![PostingRecord::new(2, 1_000_000), PostingRecord::new(20, -1_000_000)],
+            trade_date: None,
+            announcement: None,
+            due_date: None,
+            application: None,
+            identified_lots: None,
+            special_allocations: None,
+            kind: None,
+        })
+        .unwrap();
+        dir
+    }
+
+    /// 2026-07-03T16:00:00Z.
+    const JULY_3RD_AT_FOUR: i64 = 1_783_094_400;
+
+    #[test]
+    fn an_as_of_naming_another_day_is_refused_and_strikes_nothing() {
+        // ⛔ THE DEFECT. This used to strike: nothing was unpriced on the 30th,
+        // so the check passed, and July 3rd's NAV was filed under July 3rd as
+        // the answer to a question about June 30th.
+        let book = book_holding_only_cash("elsewhere");
+        let e = strike_at(book.clone(), Some("2026-06-30"), None, JULY_3RD_AT_FOUR)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("2026-07-03"), "the refusal names the day it would have landed on: {e}");
+        assert!(e.contains("Nothing was struck"), "{e}");
+        assert!(
+            ratio_nav::list(&book).unwrap().is_empty(),
+            "a NAV asked for the 30th was filed anyway, and the 3rd's one answer is spent"
+        );
+    }
+
+    #[test]
+    fn an_as_of_naming_the_strike_day_strikes_and_lands_on_that_day() {
+        // ⚠ THE ANTI-VACUITY TEST. A check refusing every --as-of passes the
+        // test above and leaves the price check unreachable.
+        let book = book_holding_only_cash("sameday");
+        strike_at(book.clone(), Some("2026-07-03"), None, JULY_3RD_AT_FOUR).unwrap();
+        let struck = ratio_nav::list(&book).unwrap();
+        assert_eq!(struck.len(), 1, "{struck:?}");
+        assert!(struck[0].id.starts_with("2026-07-03"), "landed on {}", struck[0].id);
+    }
+
+    #[test]
+    fn the_price_check_still_runs_for_the_day_the_strike_lands_on() {
+        // The day check comes first; it must not have become the only check.
+        let book = book_with_a_break("strikeday", 100);
+        let e = strike_at(book.clone(), Some("2026-07-03"), None, JULY_3RD_AT_FOUR)
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("the NAV was not struck"), "VTI has no price on the 3rd: {e}");
+        assert!(ratio_nav::list(&book).unwrap().is_empty());
     }
 
     #[test]

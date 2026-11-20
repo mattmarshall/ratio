@@ -125,6 +125,56 @@ tla_check(
     deps = [":valuation"],
 )
 
+# Which day a strike's price check asks about, against the day it lands.
+# `Ratio.Valuation` and `Ratio.Period` are each about one day; `ratio strike
+# --as-of D` checked D and struck the clock's day, and both theorems held.
+tla_library(
+    name = "strike_day",
+    srcs = ["StrikeDay.tla"],
+)
+
+tla_check(
+    name = "strike_day_check",
+    size = "small",
+    config = "MCStrikeDay.cfg",
+    module = "MCStrikeDay.tla",
+    deps = [":strike_day"],
+)
+
+# ⛔ The CLI before the fix: --as-of checked one day and the strike landed on
+# another. AStrikeLandsOnTheDayItWasAskedFor goes red.
+tla_check(
+    name = "strike_as_of_elsewhere_check",
+    size = "small",
+    config = "StrikeAsOfElsewhere.cfg",
+    module = "StrikeAsOfElsewhere.tla",
+    tags = ["manual"],
+    deps = [":strike_day"],
+)
+
+# ⛔ The same dial: a price dated after the clock's day passes a check run for
+# that later day, and the strike lands unpriced.
+# ACheckedStrikeIsPricedOnItsOwnDay goes red.
+tla_check(
+    name = "strike_checked_elsewhere_check",
+    size = "small",
+    config = "StrikeCheckedElsewhere.cfg",
+    module = "StrikeCheckedElsewhere.tla",
+    tags = ["manual"],
+    deps = [":strike_day"],
+)
+
+# ⚠ What still ships: a bare `ratio strike` runs no price check. Red on purpose
+# until it does. EveryStrikeIsPricedOnItsOwnDay goes red.
+tla_check(
+    name = "bare_strike_is_unchecked_check",
+    size = "small",
+    config = "BareStrikeIsUnchecked.cfg",
+    module = "BareStrikeIsUnchecked.tla",
+    tags = ["manual"],
+    deps = [":strike_day"],
+)
+
 # Relieving tax lots at scale. `Ratio.Lots` proves the ARITHMETIC of one
 # relief; twenty million lots do not fit in one application, and paging them
 # through an I/O compartment into CPU workers is where a proved function starts
