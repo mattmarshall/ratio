@@ -6,145 +6,82 @@
 **An accounting book whose core properties are machine-checked.**
 
 Ratio keeps the books as an append-only journal of conserved postings and
-proves what must be true of them: value is conserved on every dimension, a trial
-balance ties because the kernel says so rather than because a check passed, a
-figure cites the journal prefix it was folded from, and a sale gives up the lots
-the terms dictate. The same kernel serves personal finance, investment
-accounting, project finance, and operating businesses — different charts and
-dimensions, not forked products. The proofs are Lean 4, the concurrency and
-staleness arguments are TLA+, the running system is Rust — and parts of the Rust are **emitted from the
-Lean**, so the theorem and the code make the same decision.
+proves what must be true of them: value is conserved on every dimension, a
+trial balance ties because the kernel says so, a figure cites the journal
+prefix it was folded from, and a sale gives up the lots the terms dictate. One
+kernel serves investment funds, personal finance, project finance and
+operating businesses — different charts, not forked products. The proofs are
+Lean 4, the concurrency arguments are TLA+, the running system is Rust, and
+parts of the Rust are **emitted from the Lean**, so the theorem and the code
+make the same decision.
 
 ### ▶ [Try the live demo](https://ratio.marsh.build/)
 
-Sign in with Google or email to inspect synthetic demonstration books —
-seeded Investment funds, one blocked by a break nobody has explained, one
-struck because somebody did, and one keeping two books of record over a single
-journal. Every
-break, NAV strike and configuration version has a URL, so a figure can be sent
-to somebody rather than described.
-
-The console is a Next.js application on Vercel; the API it reads is the same
-binary you build below, running on AWS Lambda. If you would rather see a book
-than a sign-in form, the
-[trial balance](https://1h4q8av2gb.execute-api.us-east-1.amazonaws.com/balance)
-is public and needs no account.
+Sign in to inspect synthetic books — a fund blocked by a break nobody has
+explained, one struck because somebody did, one keeping two books of record
+over a single journal. Or skip the sign-in and read a
+[public trial balance](https://1h4q8av2gb.execute-api.us-east-1.amazonaws.com/balance).
 
 ## Quickstart
 
-Bazel is the only build path — `cargo build` does not work here, because the
+Bazel is the only build path; `cargo build` does not work here, because the
 kernel is emitted from the Lean at build time.
 
 ```bash
 git clone https://github.com/mattmarshall/ratio.git && cd ratio
-
-bazel test //...                                 # the proofs, specs, crates, and demos
-bazel run //crates/ratio -- watch --book <dir>   # the API and the screens — open /balance
+bazel test //...                                    # proofs, specs, crates, demos
+.agents/skills/run-ratio/scripts/smoke.sh           # build the CLI and drive a real book
 ```
 
-The default local path needs no database: the journal is a file and the
-configuration is content-addressed beside it. `RATIO_PG_URL` opts into the
-Postgres read projection; the journal remains the book of record. Python
-Connect apps live in `connect/` and use the same authenticated API contract.
+No database or service is needed: the journal is a file and the configuration
+is content-addressed beside it. In a sandbox that refuses GitHub archive
+downloads, run
+`python3 .agents/skills/restricted-network-bazel/scripts/override_github_archives.py`
+first.
 
 ## From your code
 
-`ratio server --book <dir>` serves the kernel API — `ratio.v1.Ledger` and
-`ratio.v1.Chart` — over **gRPC and REST on one port**, from one implementation,
-over the same journal the CLI writes. Post a transaction; if it does not
-conserve value on every dimension it is refused with `FAILED_PRECONDITION`
-and never reaches the journal.
+`ratio server` serves the kernel API — `ratio.v1.Ledger` and `ratio.v1.Chart` —
+over gRPC and REST on one port. An entry that does not conserve value on every
+dimension is refused with `FAILED_PRECONDITION` and never reaches the journal.
 
-```sh
+```bash
 ratio init --kind investment --book fund-1 && ratio server --book fund-1
 curl -s -X POST localhost:50051/v1/books/fund-1/transactions \
   -H 'content-type: application/json' \
   -d '{"postings":[{"dim":2,"amount":-125000},{"dim":1,"amount":125000}]}'
 ```
 
-- **Rust** — [`crates/ratio-client`](crates/ratio-client) · **Python** —
-  [`sdk/python`](sdk/python) (`pip install ratio-sdk`) · **TypeScript** —
-  [`sdk/typescript`](sdk/typescript) (`npm install ratio-sdk`)
-- **Anything else** — `cd proto && buf generate`. The API, the error model and
-  what is checked: [sdk/README.md](sdk/README.md).
+SDKs: [Rust](crates/ratio-client) · [Python](sdk/python) (`pip install ratio-sdk`)
+· [TypeScript](sdk/typescript) (`npm install ratio-sdk`) · anything else with
+`cd proto && buf generate`. The error model is in [sdk/README.md](sdk/README.md).
 
-The **operations console** — the authenticated one, with a URL for every book,
-break, strike and configuration — is a separate Next.js application in
-[`console/`](console/), deployed to Vercel while the API keeps deploying to AWS.
-It runs against the loopback server above with no identity provider and no
-secrets:
+## Working on Ratio
 
-```bash
-cd console && pnpm install && pnpm dev          # then open http://localhost:3000
-```
+Start with **[AGENTS.md](AGENTS.md)** — the rules that are not negotiable and
+the failure shapes to look for, written for coding agents and just as useful
+to people. Task-level instructions are skills in
+**[`.agents/skills/`](.agents/skills/)**: building and testing, running the
+CLI, proofs, the console, and shipping a change, each with scripts that check
+what they claim. [CONTRIBUTING.md](CONTRIBUTING.md) has the owner-only policy;
+[DEVELOPING.md](DEVELOPING.md) the full build reference.
 
 ## Documentation
 
-- **[Current state](docs/current-state.md)** — the current architecture,
-  demonstrated behavior, and remaining gaps.
-- **[GitHub roadmap project](https://github.com/users/mattmarshall/projects/1)**
-  and **[roadmap index #258](https://github.com/mattmarshall/ratio/issues/258)**
-  — delivery order, readiness, acceptance, and progress.
-
-- **[HANDOFF.md](HANDOFF.md)** — what is load-bearing and what will bite. The most
-  accurate document here; read it before changing the lot engine, the projection,
-  or anything emitted from Lean.
-- **[DEVELOPING.md](DEVELOPING.md)** — build, layout, and workflow.
-- **[deploy/README.md](deploy/README.md)** — the hosted demo: the stacks, the
-  WorkOS AuthKit setup, and how sign-in and tenancy work.
-- **[Whitepaper](paper/)** · **[Marketing site](https://mattmarshall.github.io/ratio/)**
-  · **[PLAN.md](PLAN.md)** — scope decisions and dated amendments; use the
-  current-state summary and GitHub queue for present status.
-- **[docs/connect-scopes.md](docs/connect-scopes.md)** — WorkOS Connect
-  scope catalog ([#150](https://github.com/mattmarshall/ratio/issues/150)).
-  Connect tokens accepted with catalog scopes; first-party
-  Connect apps call ConnectApiUrl. WorkOS dashboard registration
-  stays leftover on issue 22.
-- **[connect/bank-feed/](connect/bank-feed/)** — first-party Connect app
-  that maps household bank rows onto Personal templates
-  ([#165](https://github.com/mattmarshall/ratio/issues/165)). The local
-  activation runner binds WorkOS membership to Plaid and encrypts Item-token
-  custody and retry state; production webhooks and institution evidence remain.
-- **[connect/tax-pack/](connect/tax-pack/)** — first-party Connect app
-  that emits 8949-ish CSV from lot, wash, and lot-terms cites
-  ([#166](https://github.com/mattmarshall/ratio/issues/166)). Scaffold;
-  mixed dates stay unclassified; first-party Connect apps call
-  ConnectApiUrl; IRS e-file is refused.
-- **[connect/goals/](connect/goals/)** — first-party Connect app
-  for household net-worth goals and what-if scenarios
-  ([#168](https://github.com/mattmarshall/ratio/issues/168)). Scaffold;
-  cites sheet / bridge / cash-flow; scenario journals post only on
-  opt-in; first-party Connect apps call ConnectApiUrl; not a cash forecast.
-- **[connect/aia-pay-app/](connect/aia-pay-app/)** — first-party Connect
-  app that emits G702-ish / G703-ish CSV from Project billing and
-  budget cites ([#184](https://github.com/mattmarshall/ratio/issues/184)).
-  Scaffold; missing cites stay unset; first-party Connect apps call
-  ConnectApiUrl; a licensed AIA form is refused.
-- **[connect/vendor-portal/](connect/vendor-portal/)** — first-party
-  Connect app for a Project vendor / GC portal
-  ([#172](https://github.com/mattmarshall/ratio/issues/172)). Scaffold;
-  cites billed / earned / retainage / collections; vendor invoices are
-  allowlisted `journals:post` for `vendor_invoice*`; first-party
-  Connect apps call ConnectApiUrl; no vendor user directory in core.
-- **[connect/eac-forecast/](connect/eac-forecast/)** — first-party
-  Connect app that emits EAC / ETC CSV from Project budget and billing
-  cites ([#169](https://github.com/mattmarshall/ratio/issues/169)).
-  Scaffold; remaining to spend stays revised − incurred − awarded;
-  unset EAC is blank, not a silent 0; first-party Connect apps call
-  ConnectApiUrl; `/budget` still does not forecast.
-- **[connect/program-rollup/](connect/program-rollup/)** — first-party
-  Connect app that rolls per-book Project budget and billing cites
-  across membership-visible PROJECT books
-  ([#179](https://github.com/mattmarshall/ratio/issues/179)). Scaffold;
-  unset billed / collected stay blank, not a silent program 0.00; an
-  `org_id` claim is not membership; first-party Connect apps call
-  ConnectApiUrl; no mega-book in the kernel.
+- **[Current state](docs/current-state.md)** — what is built, demonstrated, and still open.
+- **[HANDOFF.md](HANDOFF.md)** — what is load-bearing and what will bite.
+- **[Roadmap project](https://github.com/users/mattmarshall/projects/1)** and
+  **[index #258](https://github.com/mattmarshall/ratio/issues/258)** — the queue.
+- **[PLAN.md](PLAN.md)** — scope decisions and dated amendments.
+- **[console/](console/)** — the operations console (Next.js, on Vercel).
+- **[connect/](connect/README.md)** — first-party Connect apps and the
+  [scope catalog](docs/connect-scopes.md).
+- **[deploy/](deploy/README.md)** — the hosted demo, sign-in and tenancy.
+- **[Whitepaper](paper/)** · **[Site](https://mattmarshall.github.io/ratio/)**
 
 ## License
 
 **AGPL-3.0** ([LICENSE](LICENSE)), and available under a commercial license
-([LICENSING.md](LICENSING.md)). Copyleft because the argument for Ratio is that a
-figure can be *checked*, and that argument is weak if the code cannot be read;
-§13 means a modification made by someone operating this over a network comes back
-rather than becoming a private advantage. The hosted service is the path with no
-copyleft obligation on the customer.
+([LICENSING.md](LICENSING.md)). Copyleft because the argument for Ratio is that
+a figure can be *checked*, and that argument is weak if the code cannot be
+read. The hosted service is the path with no copyleft obligation.
