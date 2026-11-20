@@ -779,14 +779,21 @@ def main(app_path, bootstrap_path, workflow_path):
         )
     else:
         print("  ok  publisher-policy update retains the currently served image")
-    if "--migration legacy-volatile-times-v1" not in flow:
+    # ⛔ EXACTLY THE REVIEWED MIGRATIONS, NO MORE. A substring match passed
+    # once a second migration joined the flag; a list compared whole cannot be
+    # quietly widened into a generic bypass of mismatch refusal.
+    reviewed = {"legacy-volatile-times-v1", "appended-price-facts-v1"}
+    named = re.findall(r"--migration\s+(\S+)", flow)
+    if len(named) != 1 or set(named[0].split(",")) != reviewed:
         fail(
-            f"{workflow_path} does not name the reviewed one-time receipt-time "
-            "migration — omitting it leaves pre-fixed-clock demo journals stuck; "
-            "a generic bypass would weaken mismatch refusal"
+            f"{workflow_path} must name exactly the reviewed one-time seed "
+            f"migrations {sorted(reviewed)}, found {named} — omitting "
+            "legacy-volatile-times-v1 leaves pre-fixed-clock demo journals stuck, "
+            "omitting appended-price-facts-v1 refuses the late VWRL price, and "
+            "anything else would weaken mismatch refusal"
         )
     else:
-        print("  ok  deploy names the one reviewed legacy-time migration")
+        print("  ok  deploy names exactly the reviewed one-time seed migrations")
     if re.search(r'PUBLISHED="\$\(\s*\./deploy/ratio publish-seeds', flow):
         fail(
             f"{workflow_path} captures publish-seeds before echoing it — a slow "

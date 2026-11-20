@@ -82,7 +82,7 @@ With neither installed, FileBook uses local JSONL files.
 | Material | Local path | With the object store installed | Recovery significance |
 |---|---|---|---|
 | Journal | `journal.jsonl` | `<book>/journal/<sequence>` | Preserve exact order, every entry, and all cited configuration digests. A balanced shortened journal can still be wrong. |
-| Baked-seed publication marker | Baked JSONL planes in the deployment image | `_seed/publications-v2/<book-id>` under `RATIO_JOURNAL_PREFIX` | Format version 2, whole-seed digest, per-plane lengths, and any one-time migration name prove which baked prefix deployment adopted. Preserve v1/v2 markers with the journal; deleting one to clear a mismatch removes the deployment fence. |
+| Baked-seed publication marker | Baked JSONL planes in the deployment image | `_seed/publications-v2/<book-id>`, and for an extended seed `_seed/publications-ext-v1/<book-id>`, under `RATIO_JOURNAL_PREFIX` | Format version 2, whole-seed digest, per-plane lengths, and any one-time migration name prove which baked prefix deployment adopted; an extension marker also names the v2 digest it extends. Preserve v1/v2 and extension markers with the journal; deleting one to clear a mismatch removes the deployment fence. |
 | Published bootstrap | `BOOTSTRAP.pb` and its materialized files | `_bootstrap/publications/<book-id>` and referenced `_bootstrap/blobs/<digest>` | The immutable, content-addressed bootstrap preserves chart, identity, kind, opening configuration, and creator grant. Capture both the publication pointer and its exact referenced blob. |
 | Configurations and promotion state | `config/<digest>`, `config/ACTIVE`, `config/HISTORY` | Published books use bootstrap/control. Configured unpublished books use `_filebook/<book>/state/<revision>` snapshots and `_filebook/<book>/config/<digest>` blobs, including staged but unpromoted bytes | Preserve every state/control revision and referenced blob, including staged drafts and promotion history. Verify predecessor chains and active digests; local files are caches when a store is selected. |
 | Chart | `accounts.json` | Published bootstrap, or the configured unpublished FileBook state snapshot | Names and types the dimensions. Never infer a missing legacy chart from defaults. |
@@ -134,8 +134,9 @@ The implementation supporting this inventory is:
 - [Startup](../deploy/entrypoint.sh) and
   [store installation](../crates/ratio/src/watch.rs). The Platform deployment
   owner conditionally publishes and validates baked JSONL before traffic.
-  Startup copies the local chart/config cache into `/tmp`, verifies every
-  `_seed/publications-v2/<book-id>` marker, and attaches without seed PUTs. It can
+  Startup copies the local chart/config cache into `/tmp`, verifies each
+  `_seed/publications-v2/<book-id>` marker (or its
+  `_seed/publications-ext-v1/<book-id>` extension), and attaches without seed PUTs. It can
   regenerate demo memberships from `RATIO_DEMO_MEMBER`. Published CreateBook
   books recover independently of the baked seeds.
 - The CLI entry point also attaches configured object storage before opening a

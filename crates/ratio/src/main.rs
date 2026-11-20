@@ -128,8 +128,11 @@ usage:
   ratio publish-seeds --funds DIR [--book DIR]
                                        deployment-only: conditionally publish and
                                        validate every baked append-only plane
-  ratio publish-seeds --funds DIR --migration legacy-volatile-times-v1
-                                       one-time adoption of pre-fixed-clock demos
+  ratio publish-seeds --funds DIR --migration NAME[,NAME]
+                                       reviewed one-time migrations:
+                                       legacy-volatile-times-v1 (pre-fixed-clock
+                                       demos), appended-price-facts-v1 (append
+                                       price facts to a published seed)
   ratio recovery capture               copy a quiescent object namespace into
                                        an empty independent backup namespace
   ratio recovery restore               verify that backup and restore it into
@@ -393,11 +396,14 @@ fn main() -> Result<()> {
         ["recovery", "capture"] => recovery_command(true),
         ["recovery", "restore"] => recovery_command(false),
         ["publish-seeds", "--funds", funds] => {
-            publish_seeds(book, PathBuf::from(funds), None)
+            publish_seeds(book, PathBuf::from(funds), &[])
         }
-        ["publish-seeds", "--funds", funds, "--migration", migration] => {
-            ensure_seed_migration(migration)?;
-            publish_seeds(book, PathBuf::from(funds), Some(migration))
+        ["publish-seeds", "--funds", funds, "--migration", migrations] => {
+            let migrations: Vec<&str> = migrations.split(',').map(str::trim).collect();
+            for migration in &migrations {
+                ensure_seed_migration(migration)?;
+            }
+            publish_seeds(book, PathBuf::from(funds), &migrations)
         }
         ["mcp"] => mcp(book),
         ["approve", id] => approve(book, id),
@@ -1673,16 +1679,17 @@ fn install_control_backend() -> Result<()> {
 }
 
 fn ensure_seed_migration(migration: &str) -> Result<()> {
-    if migration != ratio_store::LEGACY_SEED_TIME_MIGRATION {
-        bail!(
-            "unknown seed migration {migration:?}; the only reviewed migration is {:?}",
-            ratio_store::LEGACY_SEED_TIME_MIGRATION
-        );
+    let reviewed = [
+        ratio_store::LEGACY_SEED_TIME_MIGRATION,
+        ratio_store::APPENDED_PRICE_FACTS_MIGRATION,
+    ];
+    if !reviewed.contains(&migration) {
+        bail!("unknown seed migration {migration:?}; the reviewed migrations are {reviewed:?}");
     }
     Ok(())
 }
 
-fn publish_seeds(book: PathBuf, funds: PathBuf, migration: Option<&str>) -> Result<()> {
+fn publish_seeds(book: PathBuf, funds: PathBuf, migrations: &[&str]) -> Result<()> {
     install_control_backend()?;
     let store = crate::installed_object_store().context(
         "publish-seeds requires RATIO_JOURNAL_BUCKET or RATIO_JOURNAL_LOCAL; \
@@ -1704,13 +1711,7 @@ fn publish_seeds(book: PathBuf, funds: PathBuf, migration: Option<&str>) -> Resu
 
     for path in books {
         eprintln!("seed publication: {}", path.display());
-        let publication = match migration {
-            Some(_) => ratio_store::publish_seed_with_legacy_time_migration(
-                &path,
-                store.clone(),
-            ),
-            None => ratio_store::publish_seed(&path, store.clone()),
-        }
+        let publication = ratio_store::publish_seed_with_migrations(&path, store.clone(), migrations)
         .with_context(|| format!("publishing baked seed {}", path.display()))?;
         // Open through the read-only attachment door after publication, then
         // inspect the durable sequence height. Publication just compared every

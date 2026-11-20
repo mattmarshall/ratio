@@ -47,6 +47,34 @@ exists, the migration cannot be reused: later publication compares the marker
 normally and any changed seed fails closed. Old format-v1 markers are retained
 as rollout evidence but are not the serving marker.
 
+### The reviewed price-fact extension
+
+November 2026: two seeded funds shown as struck held 250 VWRL that no vendor
+file priced, and both NAVs had been struck over it. Once `ratio strike` checks
+prices on the day it lands, the seed must deliver that price. But the three
+books concerned (`demo-book`, Northstar, Pennington) were already published,
+and a v2 marker cannot be overwritten or reinterpreted.
+
+The deployment also names `appended-price-facts-v1`. It applies only when a
+book's baked seed differs from its v2 marker, and it:
+
+- requires the baked seed, cut back to the marker's plane lengths, to have the
+  marker's digest, so every published line is unchanged;
+- lets only `deliveries` and `facts` grow, every appended fact be a `price`
+  fact, and every appended delivery be one those facts cite;
+- compares each appended slot that is already occupied (a runtime write or a
+  concurrent deploy) and refuses on any difference;
+- claims every appended slot, then conditionally writes an immutable extension
+  marker at `journals/_seed/publications-ext-v1/<book-id>` naming the v2 digest
+  it extends.
+
+Serving startup accepts an image whose seed matches either the v2 marker or its
+extension, because publication runs while the previous version still serves.
+The extension is one-time: a second, different extension fails closed.
+[`tla/SeedExtension.tla`](../tla/SeedExtension.tla) is the protocol, with probes
+for a marker written before its slots, an occupied slot skipped, and a rewritten
+line passed off by its length.
+
 ### Migration I/O and progress
 
 Deploy `34505523090` established the failure curve: 41 minutes in publication

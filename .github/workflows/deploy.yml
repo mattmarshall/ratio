@@ -181,10 +181,14 @@ jobs:
         run: |
           set -euo pipefail
           PUBLISHED_FILE="$(mktemp)"
+          # appended-price-facts-v1 (tla/SeedExtension.tla) lets this
+          # deploy append the late VWRL price fact and its delivery to the three
+          # published books that need it, once, after comparing every appended
+          # slot and before an extension marker. A rerun reads markers, writes nothing.
           ./deploy/ratio publish-seeds \
             --book deploy/demo-book \
             --funds deploy/demo-funds \
-            --migration legacy-volatile-times-v1 \
+            --migration legacy-volatile-times-v1,appended-price-facts-v1 \
             | tee "$PUBLISHED_FILE"
           PUBLISHED="$(cat "$PUBLISHED_FILE")"
           rm -f "$PUBLISHED_FILE"
