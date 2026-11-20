@@ -1,8 +1,11 @@
 //! ratio-kernel — the conservation kernel (per `research.tex`).
 //!
 //! The records (`Posting`, `Transaction`) are **authored in Lean**
-//! (`//lean:Ratio/Kernel/Emit.lean`) and emitted to Rust into `generated.rs`,
-//! gated by a `diff_test`. A transaction is an integer vector over a conserved
+//! (`//lean:Ratio/Kernel/Emit.lean`) and emitted to Rust as `generated.rs` by
+//! the `:generated_rs` genrule on every build. ⭐ It is never committed, so
+//! there is no checked-in copy to drift from the Lean and nothing for a
+//! `diff_test` to compare — an earlier version of this comment cited one that
+//! no target defines. A transaction is an integer vector over a conserved
 //! basis; it is *valid* iff its postings net to zero. The conservation check
 //! below mirrors the proven `Ratio.Core` (`Balanced` / `ledger_conserves`); it
 //! is branch-minimal integer aggregation (no floats), per the paper. Business

@@ -1,8 +1,11 @@
 //! ratio-common — shared value types (Money, Currency, RoundingMethod).
 //!
 //! `generated.rs` is **authored in Lean** (`//lean:Ratio/Common/Emit.lean`) and
-//! emitted to Rust via the `Polyglot.Rust` builders; a `diff_test` gates it so
-//! Lean stays the source of truth (regenerate with `//lean:ratio_common_rs`).
+//! emitted via the `Polyglot.Rust` builders (`//lean:ratio_common_ast`), then
+//! rendered to Rust by the `:generated_rs` genrule on every build. ⭐ It is
+//! never committed, so Lean is the source of truth by construction: there is no
+//! checked-in copy to drift. ⚠ An earlier version of this comment cited a
+//! `diff_test` and a `//lean:ratio_common_rs` target; neither exists.
 //! The algebraic properties of the Money operations are proven in `Ratio.Core`
 //! (`//lean:money_proof_test`). Hand-written Rust (idiomatic wrappers, trait
 //! impls) belongs here in `lib.rs`, alongside the generated module.
