@@ -8,6 +8,28 @@ token pulls cites and delivers against **ConnectApiUrl**, never DemoUrl.
 registration leftover is #22. PLAN maps refuse phrases to Connect
 issues or never.
 
+## Apps
+
+Each directory has its own README with its scopes, refusals and leftovers.
+Tests run under Bazel (`bazel test //connect/...`).
+
+| App | Book kind | What it does | What it refuses |
+|---|---|---|---|
+| [`bank-feed`](bank-feed/) ([#165](https://github.com/mattmarshall/ratio/issues/165)) | Personal | maps household bank rows onto Personal templates; local activation binds WorkOS membership to Plaid with encrypted custody | production webhooks and institution evidence remain |
+| [`bank-balance-predictor`](bank-balance-predictor/) ([#163](https://github.com/mattmarshall/ratio/issues/163)) | Personal | posts bank-balance predictions as forecast journals | — |
+| [`calendar-bills`](calendar-bills/) ([#163](https://github.com/mattmarshall/ratio/issues/163)) | Personal | syncs calendar bills into scheduled journals | — |
+| [`ecb-rates`](ecb-rates/) ([#178](https://github.com/mattmarshall/ratio/issues/178)) | Personal | cited ECB reference rates | — |
+| [`tax-pack`](tax-pack/) ([#166](https://github.com/mattmarshall/ratio/issues/166)) | Personal | 8949-ish CSV from lot, wash and lot-terms cites | mixed dates stay unclassified; IRS e-file |
+| [`goals`](goals/) ([#168](https://github.com/mattmarshall/ratio/issues/168)) | Personal | net-worth goals and what-if scenarios from sheet / bridge / cash-flow cites; scenario journals post only on opt-in | not a cash forecast |
+| [`lp-portal`](lp-portal/) ([#161](https://github.com/mattmarshall/ratio/issues/161)) | Investment | LP / investor portal: partner capital, statement and NAV reads | a new kernel RPC |
+| [`fund-ops-alerts`](fund-ops-alerts/) ([#162](https://github.com/mattmarshall/ratio/issues/162)) | Investment | polls breaks, `nav_gate` and unpriced cites and alerts on them | unpriced stays empty without an as-of |
+| [`audit-export`](audit-export/) ([#185](https://github.com/mattmarshall/ratio/issues/185)) | any | audit evidence ZIP: closes and digests on every kind; strikes and breaks where a kind has them | unset or empty cites |
+| [`aia-pay-app`](aia-pay-app/) ([#184](https://github.com/mattmarshall/ratio/issues/184)) | Project | G702-ish / G703-ish CSV from billing and budget cites | missing cites stay unset; a licensed AIA form |
+| [`vendor-portal`](vendor-portal/) ([#172](https://github.com/mattmarshall/ratio/issues/172)) | Project | vendor / GC portal citing billed, earned, retainage, collections; vendor invoices are allowlisted `journals:post` | a vendor user directory in core |
+| [`eac-forecast`](eac-forecast/) ([#169](https://github.com/mattmarshall/ratio/issues/169)) | Project | EAC / ETC CSV; remaining to spend is revised − incurred − awarded | an unset EAC is blank, never a silent 0; `/budget` does not forecast |
+| [`program-rollup`](program-rollup/) ([#179](https://github.com/mattmarshall/ratio/issues/179)) | Project | rolls budget and billing cites across membership-visible Project books | an `org_id` claim is not membership; no mega-book in the kernel |
+| [`bank-rec`](bank-rec/) ([#174](https://github.com/mattmarshall/ratio/issues/174)) | Operating | bank reconciliation | — |
+
 ## Live OAuth shape
 
 Not a second IdP. Token mint is [WorkOS Connect](https://workos.com/docs/authkit/connect)

@@ -47,6 +47,28 @@ alias(
     actual = "//crates/ratio:ratio",
 )
 
+# The agent skills in .agents/skills/ say what they claim: valid frontmatter,
+# every promised script present, executable and parseable, and every skill
+# indexed by AGENTS.md. A skill nothing checks will drift like any comment.
+sh_test(
+    name = "agent_skills_test",
+    size = "small",
+    srcs = [".agents/skills_test.py"],
+    args = [
+        "$(location AGENTS.md)",
+        "$(locations :agent_skills)",
+    ],
+    data = [
+        "AGENTS.md",
+        ":agent_skills",
+    ],
+)
+
+filegroup(
+    name = "agent_skills",
+    srcs = glob([".agents/skills/**"]),
+)
+
 # PLAN.md refuses to build things. This checks it is still telling the truth.
 #
 # ⛔ IT WAS NOT. The refusal list had eleven entries on 2026-08-07 and four of
