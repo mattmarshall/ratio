@@ -619,8 +619,16 @@ fn book_key(root: &Path) -> String {
 }
 
 const SEED_PUBLICATIONS: &str = "_seed/publications-v2/";
+/// Where an `APPENDED_PRICE_FACTS_MIGRATION` extension marker lives. Inside the
+/// `_seed/publications*/` glob that recovery already preserves.
+const SEED_EXTENSIONS: &str = "_seed/publications-ext-v1/";
 const SEED_FORMAT_VERSION: u32 = 2;
 pub const LEGACY_SEED_TIME_MIGRATION: &str = "legacy-volatile-times-v1";
+/// One-time: append price facts, and the deliveries that carry them, to a
+/// published seed. `tla/SeedExtension.tla` is the protocol.
+pub const APPENDED_PRICE_FACTS_MIGRATION: &str = "appended-price-facts-v1";
+/// The only planes `APPENDED_PRICE_FACTS_MIGRATION` may lengthen.
+const APPENDABLE_SEED_PLANES: [&str; 2] = ["deliveries", "facts"];
 
 /// The immutable deployment marker for one baked book.
 ///
@@ -635,9 +643,14 @@ pub struct SeedPublication {
     pub seed_digest: String,
     pub plane_lengths: std::collections::BTreeMap<String, u64>,
     /// Present only when an explicitly requested one-time migration validated
-    /// legacy wall-clock drift before publishing this marker.
+    /// legacy wall-clock drift before publishing this marker, or extended a
+    /// published seed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub migration: Option<String>,
+    /// On an extension marker only: the digest of the published seed it
+    /// appends to. A base marker never carries it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extends: Option<String>,
 }
 
 fn seed_lines(root: &Path) -> Result<Vec<(String, Vec<Vec<u8>>)>> {
@@ -672,33 +685,93 @@ fn expected_seed_publication(root: &Path) -> Result<SeedPublication> {
     let id = book_key(root);
     ensure!(bootstrap::valid_book_id(&id), "invalid baked seed book ID {id:?}");
     let planes = seed_lines(root)?;
+    let (seed_digest, plane_lengths) =
+        seed_digest(&id, planes.iter().map(|(plane, lines)| (plane.as_str(), lines.as_slice())))?;
+    Ok(SeedPublication {
+        format_version: SEED_FORMAT_VERSION,
+        book_id: id,
+        seed_digest,
+        plane_lengths,
+        migration: None,
+        extends: None,
+    })
+}
+
+/// The whole-seed digest and per-plane lengths a marker records.
+///
+/// ⭐ One derivation for both uses: the marker of a baked seed, and the digest
+/// of a baked seed cut back to a published marker's lengths — which is how the
+/// extension migration proves every published line is unchanged without
+/// reading the durable store.
+fn seed_digest<'a>(
+    id: &str,
+    planes: impl Iterator<Item = (&'a str, &'a [Vec<u8>])>,
+) -> Result<(String, std::collections::BTreeMap<String, u64>)> {
     let mut manifest = Vec::new();
     let mut plane_lengths = std::collections::BTreeMap::new();
     manifest.extend_from_slice(format!("ratio-seed-v{SEED_FORMAT_VERSION}\n{id}\n").as_bytes());
     for (plane, lines) in planes {
         let count = u64::try_from(lines.len()).context("a baked seed plane is too long")?;
-        plane_lengths.insert(plane.clone(), count);
+        plane_lengths.insert(plane.to_string(), count);
         manifest.extend_from_slice(format!("{plane}\n{count}\n").as_bytes());
         for line in lines {
             manifest.extend_from_slice(format!("{}\n", line.len()).as_bytes());
-            manifest.extend_from_slice(&line);
+            manifest.extend_from_slice(line);
             manifest.push(b'\n');
         }
     }
-    Ok(SeedPublication {
-        format_version: SEED_FORMAT_VERSION,
-        book_id: id,
-        seed_digest: Digest::of(&manifest).as_str().to_string(),
-        plane_lengths,
-        migration: None,
-    })
+    Ok((Digest::of(&manifest).as_str().to_string(), plane_lengths))
 }
 
 fn read_seed_publication(
     store: &dyn ObjectStore,
     book_id: &str,
 ) -> Result<Option<SeedPublication>> {
-    let key = format!("{SEED_PUBLICATIONS}{book_id}");
+    read_seed_marker(store, SEED_PUBLICATIONS, book_id)
+}
+
+/// The published generations of one seed: the base marker, and the extension
+/// marker if the one-time migration ran.
+///
+/// ⛔ AN EXTENSION MUST NAME THE BASE IT EXTENDS. One that does not, or that
+/// exists without a base, describes a history this store never had; refuse
+/// rather than pick one.
+fn published_seed_generations(
+    store: &dyn ObjectStore,
+    book_id: &str,
+) -> Result<(Option<SeedPublication>, Option<SeedPublication>)> {
+    let base = read_seed_publication(store, book_id)?;
+    let ext = read_seed_marker(store, SEED_EXTENSIONS, book_id)?;
+    if let Some(ext) = &ext {
+        let base = base.as_ref().with_context(|| {
+            format!("seed extension marker for book {book_id} exists without a base marker")
+        })?;
+        ensure!(
+            ext.migration.as_deref() == Some(APPENDED_PRICE_FACTS_MIGRATION)
+                && ext.extends.as_deref() == Some(base.seed_digest.as_str()),
+            "seed extension marker for book {book_id} does not extend its base marker \
+             (migration {:?}, extends {:?}, base digest {})",
+            ext.migration,
+            ext.extends,
+            base.seed_digest
+        );
+    }
+    Ok((base, ext))
+}
+
+fn seed_marker_matches(actual: &SeedPublication, expected: &SeedPublication) -> bool {
+    actual.format_version == expected.format_version
+        && actual.book_id == expected.book_id
+        && actual.seed_digest == expected.seed_digest
+        && actual.plane_lengths == expected.plane_lengths
+}
+
+fn read_seed_marker(
+    store: &dyn ObjectStore,
+    prefix: &str,
+    book_id: &str,
+) -> Result<Option<SeedPublication>> {
+    let key = format!("{prefix}{book_id}");
     let Some(bytes) = store.get(&key)? else {
         return Ok(None);
     };
@@ -723,10 +796,7 @@ fn ensure_seed_marker_matches(
     expected: &SeedPublication,
 ) -> Result<()> {
     ensure!(
-        actual.format_version == expected.format_version
-            && actual.book_id == expected.book_id
-            && actual.seed_digest == expected.seed_digest
-            && actual.plane_lengths == expected.plane_lengths,
+        seed_marker_matches(actual, expected),
         "seed mismatch for book {}: durable marker has digest {} and plane lengths {:?}, \
          but this image has digest {} and plane lengths {:?}; refusing to alter the existing book",
         expected.book_id,
@@ -865,7 +935,23 @@ fn validate_occupied_seed(
 /// contract as legacy hydration, but unlike hydration it cannot silently
 /// accept a different seed merely because the durable log is already taller.
 pub fn publish_seed(root: impl AsRef<Path>, store: Arc<dyn ObjectStore>) -> Result<SeedPublication> {
-    publish_seed_inner(root.as_ref(), store, None)
+    publish_seed_inner(root.as_ref(), store, &[])
+}
+
+/// Publish with any of the reviewed one-time migrations the caller names:
+/// [`LEGACY_SEED_TIME_MIGRATION`] and [`APPENDED_PRICE_FACTS_MIGRATION`].
+pub fn publish_seed_with_migrations(
+    root: impl AsRef<Path>,
+    store: Arc<dyn ObjectStore>,
+    migrations: &[&str],
+) -> Result<SeedPublication> {
+    for name in migrations {
+        ensure!(
+            [LEGACY_SEED_TIME_MIGRATION, APPENDED_PRICE_FACTS_MIGRATION].contains(name),
+            "unknown seed migration {name:?}"
+        );
+    }
+    publish_seed_inner(root.as_ref(), store, migrations)
 }
 
 /// One-time adoption for demo seeds created before their clocks were fixed.
@@ -880,11 +966,7 @@ pub fn publish_seed_with_legacy_time_migration(
     root: impl AsRef<Path>,
     store: Arc<dyn ObjectStore>,
 ) -> Result<SeedPublication> {
-    publish_seed_inner(
-        root.as_ref(),
-        store,
-        Some(LEGACY_SEED_TIME_MIGRATION),
-    )
+    publish_seed_inner(root.as_ref(), store, &[LEGACY_SEED_TIME_MIGRATION])
 }
 
 fn publish_filebook_source(root: &Path, store: Arc<dyn ObjectStore>) -> Result<()> {
@@ -898,12 +980,29 @@ fn publish_filebook_source(root: &Path, store: Arc<dyn ObjectStore>) -> Result<(
 fn publish_seed_inner(
     root: &Path,
     store: Arc<dyn ObjectStore>,
-    migration: Option<&str>,
+    migrations: &[&str],
 ) -> Result<SeedPublication> {
+    let migration = migrations
+        .contains(&LEGACY_SEED_TIME_MIGRATION)
+        .then_some(LEGACY_SEED_TIME_MIGRATION);
     let expected = expected_seed_publication(root)?;
-    if let Some(actual) = read_seed_publication(store.as_ref(), &expected.book_id)? {
-        ensure_seed_marker_matches(&actual, &expected)?;
-        return Ok(actual);
+    if let Some(base) = read_seed_publication(store.as_ref(), &expected.book_id)? {
+        // ⚠ Base first: an unchanged seed stays one GET.
+        if seed_marker_matches(&base, &expected) {
+            return Ok(base);
+        }
+        let (_, ext) = published_seed_generations(store.as_ref(), &expected.book_id)?;
+        if let Some(ext) = ext {
+            // The image is the extension already published, or it is refused:
+            // the migration is one-time, so a second extension never lands.
+            ensure_seed_marker_matches(&ext, &expected)?;
+            return Ok(ext);
+        }
+        if migrations.contains(&APPENDED_PRICE_FACTS_MIGRATION) {
+            return extend_published_seed(root, store, &base, &expected);
+        }
+        ensure_seed_marker_matches(&base, &expected)?;
+        return Ok(base);
     }
 
     for (plane, lines) in seed_lines(root)? {
@@ -959,14 +1058,158 @@ pub fn verify_seed_publication(
     store: Arc<dyn ObjectStore>,
 ) -> Result<SeedPublication> {
     let expected = expected_seed_publication(root.as_ref())?;
-    let actual = read_seed_publication(store.as_ref(), &expected.book_id)?.with_context(|| {
+    let base = read_seed_publication(store.as_ref(), &expected.book_id)?.with_context(|| {
         format!(
             "baked seed {} is not published; run the deployment seed-publication step before serving traffic",
             expected.book_id
         )
     })?;
-    ensure_seed_marker_matches(&actual, &expected)?;
-    Ok(actual)
+    if seed_marker_matches(&base, &expected) {
+        return Ok(base);
+    }
+    // ⭐ EITHER GENERATION SERVES. Publication runs while the previous version
+    // still serves, so an image whose seed is the base must keep starting after
+    // an extension lands: its seed is still a true prefix of the store, exactly
+    // as it is after any runtime append. `AnImageThatStartsFindsItsSeed`.
+    let (_, ext) = published_seed_generations(store.as_ref(), &expected.book_id)?;
+    match ext {
+        Some(ext) => {
+            ensure_seed_marker_matches(&ext, &expected)?;
+            Ok(ext)
+        }
+        None => {
+            ensure_seed_marker_matches(&base, &expected)?;
+            Ok(base)
+        }
+    }
+}
+
+/// [`APPENDED_PRICE_FACTS_MIGRATION`]: append price facts, and the deliveries
+/// that carry them, to a seed that is already published. `tla/SeedExtension.tla`.
+///
+/// ⛔ THREE CHECKS, ONE PER WAY IT GOES WRONG, IN THIS ORDER:
+///
+/// 1. Every published line is unchanged: the baked seed cut back to the base
+///    marker's lengths has the base marker's digest (`ExtensionExtendsBase`).
+///    Comparing lengths alone would pass a rewritten line.
+/// 2. An appended slot somebody already holds — a demo user's runtime write,
+///    or a concurrent deploy — must hold the baked line; it is compared, never
+///    skipped.
+/// 3. Every appended slot is claimed before the extension marker is written,
+///    so a crash leaves a store a rerun completes, never a marker naming lines
+///    that are not there (`AnImageThatStartsFindsItsSeed`).
+///
+/// And the scope is narrow by construction: only `deliveries` and `facts` may
+/// grow, every appended fact is a `price` fact, and every appended delivery is
+/// one an appended fact cites.
+fn extend_published_seed(
+    root: &Path,
+    store: Arc<dyn ObjectStore>,
+    base: &SeedPublication,
+    expected: &SeedPublication,
+) -> Result<SeedPublication> {
+    let id = &expected.book_id;
+    let planes = seed_lines(root)?;
+    let refuse = |why: String| -> anyhow::Error {
+        anyhow::anyhow!(
+            "seed mismatch for book {id}: {why}; the {APPENDED_PRICE_FACTS_MIGRATION} migration \
+             only appends price facts and their deliveries; refusing to alter the existing book"
+        )
+    };
+
+    let published = |plane: &str| base.plane_lengths.get(plane).copied().unwrap_or(0);
+    for (plane, lines) in &planes {
+        let (was, now) = (published(plane), lines.len() as u64);
+        if now < was {
+            return Err(refuse(format!("plane {plane} shrank from {was} to {now} lines")));
+        }
+        if now > was && !APPENDABLE_SEED_PLANES.contains(&plane.as_str()) {
+            return Err(refuse(format!("plane {plane} grew from {was} to {now} lines")));
+        }
+    }
+
+    // 1. The published prefix, by digest.
+    let cut: Vec<(&str, &[Vec<u8>])> = planes
+        .iter()
+        .map(|(plane, lines)| (plane.as_str(), &lines[..published(plane) as usize]))
+        .collect();
+    let (prefix_digest, _) = seed_digest(id, cut.into_iter())?;
+    if prefix_digest != base.seed_digest {
+        return Err(refuse(format!(
+            "the baked lines up to the published lengths have digest {prefix_digest}, not the \
+             published {}, so a published line differs",
+            base.seed_digest
+        )));
+    }
+
+    // The scope: price facts, and only the deliveries they cite.
+    let appended = |plane: &str| -> &[Vec<u8>] {
+        let lines = &planes.iter().find(|(p, _)| p == plane).expect("every plane is listed").1;
+        &lines[published(plane) as usize..]
+    };
+    let mut cited = std::collections::BTreeSet::new();
+    for line in appended("facts") {
+        let fact: serde_json::Value =
+            serde_json::from_slice(line).context("an appended fact is not JSON")?;
+        if fact.get("kind").and_then(serde_json::Value::as_str) != Some("price") {
+            return Err(refuse(format!(
+                "appended fact {:?} is not a price fact",
+                fact.get("id").and_then(serde_json::Value::as_str).unwrap_or("?")
+            )));
+        }
+        if let Some(delivery) = fact.pointer("/provenance/delivery").and_then(serde_json::Value::as_str) {
+            cited.insert(delivery.to_string());
+        }
+    }
+    for line in appended("deliveries") {
+        let delivery: serde_json::Value =
+            serde_json::from_slice(line).context("an appended delivery is not JSON")?;
+        let digest = delivery.get("digest").and_then(serde_json::Value::as_str).unwrap_or("");
+        if !cited.contains(digest) {
+            return Err(refuse(format!(
+                "appended delivery {digest:?} carries no appended price fact"
+            )));
+        }
+    }
+
+    // 2 and 3. Compare what is occupied, claim what is not — all before the marker.
+    for plane in APPENDABLE_SEED_PLANES {
+        let lines = &planes.iter().find(|(p, _)| p == plane).expect("every plane is listed").1;
+        let log = SeqLog::new(store.clone(), format!("{id}/{plane}/"));
+        let height = log.height()?;
+        let (was, now) = (published(plane), lines.len() as u64);
+        ensure!(
+            height >= was,
+            "seed mismatch for book {id} plane {plane}: the store holds {height} lines below the \
+             published {was}"
+        );
+        for seq in (was + 1)..=now {
+            let baked = &lines[(seq - 1) as usize];
+            if seq > height && log.claim(seq, baked)? {
+                continue;
+            }
+            let durable = log.get(seq)?.context("an occupied seed slot left no readable object")?;
+            if durable != *baked {
+                return Err(refuse(format!(
+                    "plane {plane} sequence {seq} already holds digest {} (a runtime write or a \
+                     different deploy), not the baked {}",
+                    Digest::of(&durable).short(),
+                    Digest::of(baked).short()
+                )));
+            }
+        }
+    }
+    publish_filebook_source(root, store.clone())?;
+
+    let mut publication = expected.clone();
+    publication.migration = Some(APPENDED_PRICE_FACTS_MIGRATION.to_string());
+    publication.extends = Some(base.seed_digest.clone());
+    let key = format!("{SEED_EXTENSIONS}{id}");
+    store.put_if_absent(&key, &serde_json::to_vec(&publication)?)?;
+    let (_, ext) = published_seed_generations(store.as_ref(), id)?;
+    let ext = ext.context("the seed extension marker could not be read after publication")?;
+    ensure_seed_marker_matches(&ext, expected)?;
+    Ok(ext)
 }
 
 /// PUT each non-empty line at its 1-based sequence, starting after the
@@ -3010,6 +3253,173 @@ mod tests {
         let err = publish_seed(&root, store).unwrap_err().to_string();
         assert!(err.contains("seed mismatch"), "{err}");
         assert!(err.contains("refusing to alter the existing book"), "{err}");
+    }
+
+    // ── appended-price-facts-v1 (`tla/SeedExtension.tla`) ─────────────────
+
+    const TRADE_DELIVERY: &str = r#"{"digest":"d-trades","origin":"trades.csv"}"#;
+    const TRADE_FACT: &str = r#"{"id":"t1","kind":"trade","provenance":{"delivery":"d-trades"}}"#;
+    const LATE_DELIVERY: &str = r#"{"digest":"d-late","origin":"late-prices.csv"}"#;
+    const LATE_PRICE: &str = r#"{"id":"p1","kind":"price","provenance":{"delivery":"d-late"}}"#;
+
+    fn write_seed(root: &Path, journal: &[&str], deliveries: &[&str], facts: &[&str]) {
+        let plane = |lines: &[&str]| lines.iter().map(|l| format!("{l}\n")).collect::<String>();
+        fs::write(root.join("journal.jsonl"), plane(journal)).unwrap();
+        fs::write(root.join("deliveries.jsonl"), plane(deliveries)).unwrap();
+        fs::write(root.join("facts.jsonl"), plane(facts)).unwrap();
+    }
+
+    /// A store published with the base seed, and the root rewritten to the
+    /// extended one: what a deploy of the new image finds.
+    fn published_then_extended() -> (PathBuf, Arc<dyn ObjectStore>, SeedPublication) {
+        let root = seed_tmp();
+        write_seed(&root, &["entry-1"], &[TRADE_DELIVERY], &[TRADE_FACT]);
+        let store: Arc<dyn ObjectStore> = Arc::new(MemoryStore::new());
+        let base = publish_seed(&root, store.clone()).unwrap();
+        write_seed(&root, &["entry-1"], &[TRADE_DELIVERY, LATE_DELIVERY], &[TRADE_FACT, LATE_PRICE]);
+        (root, store, base)
+    }
+
+    fn extension_marker(store: &Arc<dyn ObjectStore>, root: &Path) -> Option<Vec<u8>> {
+        store.get(&format!("{SEED_EXTENSIONS}{}", super::book_key(root))).unwrap()
+    }
+
+    fn height(store: &Arc<dyn ObjectStore>, root: &Path, plane: &str) -> u64 {
+        SeqLog::new(store.clone(), format!("{}/{plane}/", super::book_key(root))).height().unwrap()
+    }
+
+    #[test]
+    fn an_appended_price_fact_extends_a_published_seed_only_through_the_migration() {
+        let (root, store, base) = published_then_extended();
+
+        let err = publish_seed(&root, store.clone()).unwrap_err().to_string();
+        assert!(err.contains("refusing to alter the existing book"), "without the migration: {err}");
+
+        let ext = publish_seed_with_migrations(&root, store.clone(), &[APPENDED_PRICE_FACTS_MIGRATION])
+            .unwrap();
+        assert_eq!(ext.extends.as_deref(), Some(base.seed_digest.as_str()));
+        assert_eq!(ext.migration.as_deref(), Some(APPENDED_PRICE_FACTS_MIGRATION));
+        assert_eq!(height(&store, &root, "facts"), 2);
+        assert_eq!(height(&store, &root, "deliveries"), 2);
+        assert_eq!(verify_seed_publication(&root, store.clone()).unwrap(), ext);
+        assert_eq!(
+            publish_seed_with_migrations(&root, store.clone(), &[APPENDED_PRICE_FACTS_MIGRATION]).unwrap(),
+            ext,
+            "a rerun of the same extension is a no-op"
+        );
+    }
+
+    #[test]
+    fn the_previous_image_keeps_starting_after_an_extension_lands() {
+        // ⭐ Publication runs while the old version still serves. Its seed is
+        // still a true prefix of the store, so its cold starts must not fail.
+        let (root, store, base) = published_then_extended();
+        publish_seed_with_migrations(&root, store.clone(), &[APPENDED_PRICE_FACTS_MIGRATION]).unwrap();
+        write_seed(&root, &["entry-1"], &[TRADE_DELIVERY], &[TRADE_FACT]);
+        assert_eq!(verify_seed_publication(&root, store.clone()).unwrap(), base);
+        assert_eq!(publish_seed(&root, store).unwrap(), base);
+    }
+
+    #[test]
+    fn an_extension_may_not_rewrite_a_published_line() {
+        // The journal keeps its length and changes its content: lengths alone
+        // would call this an extension. `ExtensionExtendsBase`.
+        let (root, store, _) = published_then_extended();
+        write_seed(&root, &["entry-1-rewritten"], &[TRADE_DELIVERY, LATE_DELIVERY], &[TRADE_FACT, LATE_PRICE]);
+        let err = publish_seed_with_migrations(&root, store.clone(), &[APPENDED_PRICE_FACTS_MIGRATION])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("a published line differs"), "{err}");
+        assert_eq!(height(&store, &root, "facts"), 1, "a refused extension claimed a slot");
+        assert!(extension_marker(&store, &root).is_none());
+    }
+
+    #[test]
+    fn an_extension_appends_only_price_facts_and_the_deliveries_they_cite() {
+        let refused = |journal: &[&str], deliveries: &[&str], facts: &[&str], why: &str| {
+            let (root, store, _) = published_then_extended();
+            write_seed(&root, journal, deliveries, facts);
+            let err = publish_seed_with_migrations(&root, store.clone(), &[APPENDED_PRICE_FACTS_MIGRATION])
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains(why), "expected {why:?}: {err}");
+            assert!(extension_marker(&store, &root).is_none(), "{why}");
+        };
+        let trade_2 = r#"{"id":"t2","kind":"trade","provenance":{"delivery":"d-late"}}"#;
+        refused(&["entry-1"], &[TRADE_DELIVERY, LATE_DELIVERY], &[TRADE_FACT, trade_2], "is not a price fact");
+        refused(&["entry-1"], &[TRADE_DELIVERY, LATE_DELIVERY], &[TRADE_FACT], "carries no appended price fact");
+        refused(&["entry-1", "entry-2"], &[TRADE_DELIVERY, LATE_DELIVERY], &[TRADE_FACT, LATE_PRICE], "plane journal grew");
+    }
+
+    #[test]
+    fn a_runtime_write_in_an_appended_slot_refuses_the_extension() {
+        // A demo user ingested into the published book; slot 2 is theirs.
+        let (root, store, _) = published_then_extended();
+        let facts = SeqLog::new(store.clone(), format!("{}/facts/", super::book_key(&root)));
+        assert!(facts.claim(2, br#"{"id":"u1","kind":"price","provenance":{"delivery":"d-user"}}"#).unwrap());
+        let err = publish_seed_with_migrations(&root, store.clone(), &[APPENDED_PRICE_FACTS_MIGRATION])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("plane facts sequence 2 already holds"), "{err}");
+        assert!(extension_marker(&store, &root).is_none());
+    }
+
+    #[test]
+    fn a_deploy_that_died_after_its_claims_is_completed_by_a_rerun() {
+        let (root, store, _) = published_then_extended();
+        let key = super::book_key(&root);
+        assert!(SeqLog::new(store.clone(), format!("{key}/deliveries/")).claim(2, LATE_DELIVERY.as_bytes()).unwrap());
+        assert!(SeqLog::new(store.clone(), format!("{key}/facts/")).claim(2, LATE_PRICE.as_bytes()).unwrap());
+        assert!(extension_marker(&store, &root).is_none());
+        publish_seed_with_migrations(&root, store.clone(), &[APPENDED_PRICE_FACTS_MIGRATION]).unwrap();
+        assert!(extension_marker(&store, &root).is_some());
+    }
+
+    /// Fails every claim of one key, as a deploy dying mid-extension would.
+    struct FailOneClaim {
+        inner: MemoryStore,
+        fail: &'static str,
+    }
+
+    impl ObjectStore for FailOneClaim {
+        fn put_if_absent(&self, key: &str, body: &[u8]) -> Result<bool> {
+            ensure!(!key.ends_with(self.fail), "injected failure claiming {key}");
+            self.inner.put_if_absent(key, body)
+        }
+        fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
+            self.inner.get(key)
+        }
+        fn list(&self, prefix: &str) -> Result<Vec<String>> {
+            self.inner.list(prefix)
+        }
+    }
+
+    #[test]
+    fn no_extension_marker_exists_until_every_appended_slot_is_claimed() {
+        // ⛔ `AnImageThatStartsFindsItsSeed`: a marker first, then a crash,
+        // would let the new image start over a fact the store never received.
+        let root = seed_tmp();
+        write_seed(&root, &["entry-1"], &[TRADE_DELIVERY], &[TRADE_FACT]);
+        let store: Arc<dyn ObjectStore> =
+            Arc::new(FailOneClaim { inner: MemoryStore::new(), fail: "facts/00000000000000000002" });
+        publish_seed(&root, store.clone()).unwrap();
+        write_seed(&root, &["entry-1"], &[TRADE_DELIVERY, LATE_DELIVERY], &[TRADE_FACT, LATE_PRICE]);
+        assert!(publish_seed_with_migrations(&root, store.clone(), &[APPENDED_PRICE_FACTS_MIGRATION]).is_err());
+        assert!(extension_marker(&store, &root).is_none());
+        assert!(verify_seed_publication(&root, store).is_err(), "the new image must not start");
+    }
+
+    #[test]
+    fn a_published_extension_is_one_time() {
+        let (root, store, _) = published_then_extended();
+        publish_seed_with_migrations(&root, store.clone(), &[APPENDED_PRICE_FACTS_MIGRATION]).unwrap();
+        let another = r#"{"id":"p2","kind":"price","provenance":{"delivery":"d-late"}}"#;
+        write_seed(&root, &["entry-1"], &[TRADE_DELIVERY, LATE_DELIVERY], &[TRADE_FACT, LATE_PRICE, another]);
+        let err = publish_seed_with_migrations(&root, store.clone(), &[APPENDED_PRICE_FACTS_MIGRATION])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("refusing to alter the existing book"), "{err}");
+        assert_eq!(height(&store, &root, "facts"), 2, "a second extension claimed a slot");
     }
 
     #[test]

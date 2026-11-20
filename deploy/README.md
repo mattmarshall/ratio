@@ -434,7 +434,11 @@ contains the wrong seed or the workflow targets the wrong durable prefix, then
 rebuild the intended image or restore/choose the correct untouched prefix.
 Do not broaden or rename `legacy-volatile-times-v1` to handle another mismatch;
 anything outside its three documented clock fields is a real divergence for
-this procedure.
+this procedure. `appended-price-facts-v1` is the other reviewed migration: it
+only appends price facts and their deliveries to a published seed, and writes
+an extension marker at `journals/_seed/publications-ext-v1/<book-id>`
+([durable startup](../docs/durable-startup.md#the-reviewed-price-fact-extension)).
+Neither is a way to clear a mismatch it does not describe.
 Rollback changes only the image and preserves the same bucket/prefix, so the
 prior version attaches to the same journals and ignores the newer marker.
 The full procedure is in [durable startup](../docs/durable-startup.md).

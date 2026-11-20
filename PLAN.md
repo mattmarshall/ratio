@@ -1,5 +1,23 @@
 # Ratio — path to revenue
 
+### November 20, 2026 — every strike checks prices; one reviewed seed extension
+
+`ratio strike` now runs the unpriced-position check for the day it lands on,
+whether or not `--as-of` is given (`--as-of` must name that day). The bare
+strike used to skip the check, and the seeded demo showed the result: the two
+funds presented as struck held 250 VWRL that nothing priced. The seed now
+delivers a late vendor price for it at the trade's own 112.40 EUR, so no NAV or
+journal figure moves.
+
+Those books were already published, and a published seed is immutable. The
+deploy names one more reviewed, one-time migration, `appended-price-facts-v1`,
+which may only append price facts and the deliveries that carry them, and
+records an extension marker instead of altering the original
+([durable startup](docs/durable-startup.md#the-reviewed-price-fact-extension),
+`tla/SeedExtension.tla`). It is not a general seed-change mechanism. The
+`nav_gate` read on GetFund/GetView is unchanged: without an as-of it has no day
+to price, so unpriced stays empty there.
+
 ### October 24, 2026 — adopted storage and distribution tiers
 
 Related: #367. Matt Marshall adopted **on-device Personal and hosted SQL

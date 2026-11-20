@@ -30,6 +30,9 @@ EXPECTED = {
     ("crates/ratio-store/src/objects.rs", "BrokenScan"),
     ("crates/ratio-store/src/lib.rs", "CountingStore"),
     ("crates/ratio-store/src/lib.rs", "DelayedGetStore"),
+    # Refuses one put_if_absent so the seed-extension test can show that no
+    # extension marker lands before every appended slot is claimed.
+    ("crates/ratio-store/src/lib.rs", "FailOneClaim"),
     ("crates/ratio-store/src/control.rs", "FaultStore"),
     ("crates/ratio-console/src/bootstrap_tests.rs", "CountControlScans"),
     ("crates/ratio-console/src/bootstrap_tests.rs", "FaultStore"),
